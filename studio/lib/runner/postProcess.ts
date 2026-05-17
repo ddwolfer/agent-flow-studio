@@ -6,6 +6,7 @@ export interface PostProcessArgs {
   htmlPath: string;
   post: PipelineConfig["post"];
   runPicks: boolean;
+  picksPrompt: string;             // externalized picks prompt text (from prompts/eason/picks.md)
   financeRoot: string;             // path to inherited financial-report-system/
   pdfPath?: string;
   spawner: Spawner;
@@ -30,7 +31,7 @@ export async function postProcess(a: PostProcessArgs): Promise<PostProcessResult
   }
   if (a.runPicks) {
     const { code } = await a.spawner("claude",
-      ["-p", "extract picks", "--model", a.post.picks.model],
+      ["-p", a.picksPrompt, "--model", a.post.picks.model],
       { cwd: a.financeRoot });
     res.picksOk = code === 0;
   }

@@ -11,7 +11,8 @@ describe("postProcess", () => {
     const spy: Spawner = async (file) => { seen.push(file); return { code: 0 }; };
     const r = await postProcess({
       htmlPath: "/tmp/r.html", post: okPipelinePost as any,
-      runPicks: false, financeRoot: "/repo/financial-report-system", spawner: spy,
+      runPicks: false, picksPrompt: "PICKS_PROMPT_TEXT",
+      financeRoot: "/repo/financial-report-system", spawner: spy,
     });
     expect(seen.some((f) => /chrome/i.test(f))).toBe(true);
     expect(r.pdfOk).toBe(true);
@@ -23,8 +24,24 @@ describe("postProcess", () => {
     const r = await postProcess({
       htmlPath: "/tmp/r.html",
       post: { ...okPipelinePost, pdf: false, notify: true } as any,
-      runPicks: false, financeRoot: "/repo/financial-report-system", spawner: spy,
+      runPicks: false, picksPrompt: "PICKS_PROMPT_TEXT",
+      financeRoot: "/repo/financial-report-system", spawner: spy,
     });
     expect(r.notifyOk).toBe(false);
+  });
+  it("passes the picks prompt text to claude when runPicks", async () => {
+    const calls: { file: string; args: string[] }[] = [];
+    const spy: Spawner = async (file, args) => { calls.push({ file, args }); return { code: 0 }; };
+    const r = await postProcess({
+      htmlPath: "/tmp/r.html",
+      post: { pdf: false, notify: false, picks: { model: "claude-haiku-4-5", prompt: "p" } } as any,
+      runPicks: true, picksPrompt: "EXTRACT-EASON-PICKS-PROMPT",
+      financeRoot: "/repo/financial-report-system", spawner: spy,
+    });
+    const claudeCall = calls.find((c) => c.file === "claude");
+    expect(claudeCall).toBeTruthy();
+    expect(claudeCall!.args).toContain("EXTRACT-EASON-PICKS-PROMPT");
+    expect(claudeCall!.args).not.toContain("extract picks");
+    expect(r.picksOk).toBe(true);
   });
 });
