@@ -1,0 +1,26 @@
+node_modules/
+mcp/knowledge-graph/node_modules/
+mcp/knowledge-graph/*.db
+mcp/knowledge-graph/*.sqlite*
+.agent-bridge/
+.agent-bridge-markdown/
+*.backup
+.git.bak-*
+.DS_Store
+.claude/scheduled_tasks.lock
+/package-lock.json
+
+# Agent Bridge (auto-added by let-them-talk init)
+.mcp.json
+.codex/
+.gemini/
+
+# Project-specific (agent-flow-studio)
+# Secrets — never commit .env files anywhere in the tree
+**/.env
+**/.env.local
+**/.env.*.local
+# Generated reports and binary databases from the inherited financial-report-system
+financial-report-system/reports/
+financial-report-system/data/*.db
+financial-report-system/data/*.sqlite*

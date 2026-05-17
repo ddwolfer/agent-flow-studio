@@ -1,0 +1,63 @@
+# === 敏感檔 (一定不能上傳) ===
+.env
+*.env
+!.env.example
+**/.env
+**/credentials.json
+**/secrets.json
+**/*token*
+**/*secret*
+
+# === 系統產出 (執行時生成) ===
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+
+reports/
+*.pdf
+*.html.bak
+*.log
+logs/
+
+# === 暫存 / 截圖 ===
+/tmp/
+*.tmp
+*.png.tmp
+screenshot_*.png
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.eggs/
+*.egg-info/
+
+# === Node (以防之後加 npm) ===
+node_modules/
+npm-debug.log*
+
+# === IDE / OS ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# === Claude Code 本地狀態 (skill 內容要進版控,但執行時暫存不要) ===
+.claude/local/
+.claude/cache/
+.claude/sessions/
+
+# === 個人化筆記 (避免不小心 commit) ===
+NOTES.md
+TODO.local.md
+*.private.md

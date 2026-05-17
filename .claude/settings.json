@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [{ "type": "command", "command": "node /Users/pochenkuo/AI/new_financial-report-system/mcp/knowledge-graph/hooks/session-start.js", "timeout": 10 }]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [{ "type": "command", "command": "node /Users/pochenkuo/AI/new_financial-report-system/mcp/knowledge-graph/hooks/post-compact.js", "timeout": 10 }]
+      }
+    ],
+    "UserPromptSubmit": [{
+      "hooks": [{ "type": "command", "command": "node /Users/pochenkuo/AI/new_financial-report-system/mcp/knowledge-graph/hooks/auto-recall.js", "timeout": 10 }]
+    }],
+    "Stop": [{
+      "hooks": [{ "type": "agent", "model": "claude-opus-4-6", "prompt": "See auto-capture prompt in settings.json", "timeout": 60 }]
+    }],
+    "PreToolUse": [{
+      "hooks": [{ "type": "command", "command": "node /Users/pochenkuo/AI/new_financial-report-system/mcp/knowledge-graph/hooks/search-enforcer.js", "timeout": 5 }]
+    }]
+  }
+}
