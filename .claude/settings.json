@@ -18,6 +18,10 @@
     }],
     "PreToolUse": [{
       "hooks": [{ "type": "command", "command": "node /Users/pochenkuo/AI/new_financial-report-system/mcp/knowledge-graph/hooks/search-enforcer.js", "timeout": 5 }]
+    }],
+    "PostToolUse": [{
+      "matcher": "Bash",
+      "hooks": [{ "type": "command", "command": "jq -r '.tool_input.command // \"\"' | grep -q \"git push\" && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"PER-SLICE RITUAL: this slice just pushed. Before continuing, record what was learned to the knowledge-graph — record_experience for the decision/outcome, store_knowledge for any durable architecture/domain fact — unless you already recorded it for this slice.\"}}' || true", "timeout": 10 }]
     }]
   }
 }

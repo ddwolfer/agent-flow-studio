@@ -15,6 +15,9 @@ mcp/knowledge-graph/*.sqlite*
 .codex/
 .gemini/
 
+# Brainstorming visual-companion scratch
+.superpowers/
+
 # Project-specific (agent-flow-studio)
 # Secrets — never commit .env files anywhere in the tree
 **/.env
