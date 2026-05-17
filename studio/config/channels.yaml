@@ -1,0 +1,13 @@
+channels:
+  - id: eason
+    handle: "@m168"
+    name: "張貽程 / Eason"
+    search_query: "張貽程 外資超錢線"
+    pipeline: eason
+    enabled: true
+  - id: yutinghao
+    handle: "@yutinghaofinance"
+    name: "游庭皓"
+    search_query: "游庭皓 早晨財經速解讀"
+    pipeline: eason
+    enabled: false

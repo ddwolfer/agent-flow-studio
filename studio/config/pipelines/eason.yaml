@@ -1,0 +1,17 @@
+name: eason
+model: claude-sonnet-4-6
+max_turns: 50
+prompt:
+  template: prompts/eason/main.md
+  references:
+    - prompts/eason/framework.md
+    - prompts/eason/voice.md
+post:
+  pdf: true
+  notify: false
+  picks:
+    model: claude-haiku-4-5
+    prompt: prompts/eason/picks.md
+quality_judge:
+  model: claude-sonnet-4-6
+  rubric: prompts/eason/judge-rubric.md
