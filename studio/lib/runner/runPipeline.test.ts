@@ -27,5 +27,7 @@ describe("runPipeline", () => {
       studioRoot: STUDIO, runsRoot, claudeBin: FAKE,
       spawner: async () => ({ code: 0 }),
     })).rejects.toThrow(/unknown channel/);
+    const { readdir } = await import("node:fs/promises");
+    expect(await readdir(runsRoot)).toHaveLength(0);
   });
 });

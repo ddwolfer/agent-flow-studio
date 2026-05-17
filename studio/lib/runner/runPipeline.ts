@@ -32,7 +32,8 @@ export async function runPipeline(channelId: string,
     const cr = await runClaude({
       prompt, model: cfg.pipeline.model, maxTurns: cfg.pipeline.max_turns,
       cwd: financeRoot, htmlOut, claudeBin: o.claudeBin,
-      env: { FAKE_CLAUDE_OUT: htmlOut }, spawner: o.spawner,
+      env: o.claudeBin?.endsWith("fake-claude.sh")
+        ? { FAKE_CLAUDE_OUT: htmlOut } : undefined, spawner: o.spawner,
     });
     const pp = await postProcess({
       htmlPath: cr.htmlPath, financeRoot,
