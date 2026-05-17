@@ -2,7 +2,7 @@ import type { Channel } from "../config/schema";
 
 export interface BuildPromptArgs {
   promptTemplate: string;
-  references: string[];
+  references: readonly string[];
   channel: Channel;
   calendarText: string;
 }
