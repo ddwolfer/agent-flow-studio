@@ -8,3 +8,7 @@ def test_chunk_ranges():
     m = _load()
     assert m._chunk_ranges(1000, 300) == [(0,300),(300,600),(600,900),(900,1000)]
     assert m._chunk_ranges(250, 300) == [(0,250)]
+
+def test_chunk_ranges_zero_duration():
+    m = _load()
+    assert m._chunk_ranges(0, 300) == [(0, 0)]
