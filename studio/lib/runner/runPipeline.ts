@@ -14,6 +14,8 @@ import { mechanicalChecks } from "../quality/check";
 export interface RunPipelineOpts {
   studioRoot: string; runsRoot: string;
   notify?: boolean; claudeBin?: string; spawner: Spawner; now?: Date;
+  mcpConfigPath?: string;
+  allowedTools?: string[];
 }
 
 export async function runPipeline(channelId: string,
@@ -40,6 +42,8 @@ export async function runPipeline(channelId: string,
       cwd: financeRoot, htmlOut, claudeBin: o.claudeBin,
       env: o.claudeBin?.endsWith("fake-claude.sh")
         ? { FAKE_CLAUDE_OUT: htmlOut } : undefined, spawner: o.spawner,
+      mcpConfigPath: o.mcpConfigPath,
+      allowedTools: o.allowedTools,
     });
     const pp = await postProcess({
       htmlPath: cr.htmlPath, financeRoot,
