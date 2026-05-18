@@ -44,4 +44,13 @@ describe("postProcess", () => {
     expect(claudeCall!.args).not.toContain("extract picks");
     expect(r.picksOk).toBe(true);
   });
+  it("uses a resolvable chrome binary for the pdf step", async () => {
+    const seen: string[] = [];
+    const spy: Spawner = async (file) => { seen.push(file); return { code: 0 }; };
+    await postProcess({ htmlPath: "/tmp/r.html",
+      post: { pdf: true, notify: false, picks: { model: "h", prompt: "p" } } as any,
+      runPicks: false, picksPrompt: "x",
+      financeRoot: "/repo/financial-report-system", spawner: spy });
+    expect(seen.some((f) => /chrome/i.test(f))).toBe(true);
+  });
 });

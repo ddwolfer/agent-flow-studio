@@ -17,9 +17,14 @@ export interface PostProcessResult {
 
 export async function postProcess(a: PostProcessArgs): Promise<PostProcessResult> {
   const res: PostProcessResult = {};
+  const { existsSync } = await import("node:fs");
+  const CHROME = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+  ].find((p) => existsSync(p)) ?? "google-chrome";
   if (a.post.pdf) {
     const pdf = a.pdfPath ?? a.htmlPath.replace(/\.html$/, ".pdf");
-    const { code } = await a.spawner("google-chrome",
+    const { code } = await a.spawner(CHROME,
       ["--headless", `--print-to-pdf=${pdf}`, a.htmlPath]);   // arg array, no shell
     res.pdfOk = code === 0;
     if (res.pdfOk) res.pdfPath = pdf;

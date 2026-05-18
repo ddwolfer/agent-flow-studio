@@ -1,3 +1,4 @@
 import { join } from "node:path";
-export const STUDIO_ROOT = process.cwd();          // studio/
+import { fileURLToPath } from "node:url";
+export const STUDIO_ROOT = fileURLToPath(new URL("../../", import.meta.url)); // studio/
 export const RUNS_ROOT = join(STUDIO_ROOT, "runs");

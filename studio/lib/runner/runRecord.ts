@@ -7,6 +7,8 @@ export interface RunRecord {
   startedAt: string; finishedAt?: string; exitCode?: number;
   reportHtmlPath?: string; pdfPath?: string;
   reportOk?: boolean; pdfOk?: boolean; notifyOk?: boolean; notifySent?: boolean;
+  qualityOk?: boolean;
+  qualityFailures?: string[];
   pid?: number;
   configSnapshot: { gitSha: string; promptHashes: Record<string, string> };
   error?: { stage: string; message: string; claudeLogPath?: string };

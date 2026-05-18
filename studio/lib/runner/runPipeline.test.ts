@@ -30,4 +30,14 @@ describe("runPipeline", () => {
     const { readdir } = await import("node:fs/promises");
     expect(await readdir(runsRoot)).toHaveLength(0);
   });
+  it("records advisory qualityOk=false for the fake report but still succeeds", async () => {
+    const r = await runPipeline("eason", {
+      studioRoot: STUDIO, runsRoot, claudeBin: FAKE,
+      spawner: async (file, args, opts) =>
+        file.endsWith("fake-claude.sh") ? spawnProc(file, args, opts) : { code: 0 },
+    });
+    expect(r.status).toBe("succeeded");
+    expect(r.qualityOk).toBe(false);
+    expect(Array.isArray(r.qualityFailures)).toBe(true);
+  });
 });
