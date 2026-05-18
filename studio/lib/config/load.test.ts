@@ -15,6 +15,14 @@ describe("loadConfig", () => {
     expect(c.promptTemplate).toContain("{{calendar}}");
     expect(c.references.length).toBeGreaterThan(0);
   });
+  it("eason references include persistence instructions (eason_training + eason_daily)", async () => {
+    const c = await loadConfig("eason", ROOT);
+    // persistence.md must be inlined — check key phrases from the file
+    const allRefs = c.references.join("\n");
+    expect(allRefs).toContain("eason_training");
+    expect(allRefs).toContain("eason_daily");
+    expect(allRefs).toContain("mcp__sqlite__create_record");
+  });
   it("throws ConfigError for an unknown channel", async () => {
     await expect(loadConfig("nope", ROOT)).rejects.toBeInstanceOf(ConfigError);
   });

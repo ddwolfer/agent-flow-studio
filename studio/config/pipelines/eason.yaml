@@ -6,6 +6,7 @@ prompt:
   references:
     - prompts/eason/framework.md
     - prompts/eason/voice.md
+    - prompts/eason/persistence.md
 post:
   pdf: true
   notify: false
