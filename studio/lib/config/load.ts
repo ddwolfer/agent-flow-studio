@@ -11,6 +11,7 @@ export interface LoadedConfig {
   references: string[];
   picksPrompt: string;
   judgeRubric: string;
+  qualitySections: string[];
 }
 
 async function readText(p: string): Promise<string> {
@@ -48,5 +49,6 @@ export async function loadConfig(channelId: string, studioRoot: string): Promise
   const picksPrompt = await readText(join(studioRoot, pipeline.post.picks.prompt));
   const judgeRubric = await readText(join(studioRoot, pipeline.quality_judge.rubric));
 
-  return { channel, pipeline, promptTemplate, references, picksPrompt, judgeRubric };
+  const qualitySections = pipeline.quality_sections ?? [];
+  return { channel, pipeline, promptTemplate, references, picksPrompt, judgeRubric, qualitySections };
 }

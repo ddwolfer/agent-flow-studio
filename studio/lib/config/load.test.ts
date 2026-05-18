@@ -29,6 +29,40 @@ describe("loadConfig", () => {
   it("throws ConfigError for a disabled channel", async () => {
     await expect(loadConfig("yutinghao", ROOT)).rejects.toThrow(/disabled/);
   });
+  it("eason loadConfig surfaces qualitySections from eason.yaml", async () => {
+    const c = await loadConfig("eason", ROOT);
+    expect(Array.isArray(c.qualitySections)).toBe(true);
+    expect(c.qualitySections.length).toBeGreaterThan(0);
+    expect(c.qualitySections).toContain("指標儀表板");
+    expect(c.qualitySections).toContain("風險提示");
+    expect(c.qualitySections).toContain("報告總結");
+  });
+});
+
+describe("loadConfig — quality_sections defaulting", () => {
+  let tmpRoot: string;
+
+  afterEach(async () => {
+    if (tmpRoot) await rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  it("defaults qualitySections to [] when pipeline yaml omits quality_sections", async () => {
+    // Build a minimal but valid studioRoot with eason pipeline lacking quality_sections
+    const src = new URL("../../", import.meta.url).pathname; // real studio/
+    tmpRoot = await mkdtemp(join(tmpdir(), "load-qs-"));
+    // Copy config dirs and necessary prompt files from real studio
+    const { cp } = await import("node:fs/promises");
+    await cp(join(src, "config"), join(tmpRoot, "config"), { recursive: true });
+    await cp(join(src, "prompts"), join(tmpRoot, "prompts"), { recursive: true });
+    // Overwrite eason.yaml with no quality_sections
+    const originalYaml = await import("node:fs/promises").then(m =>
+      m.readFile(join(src, "config/pipelines/eason.yaml"), "utf8"));
+    const withoutQs = originalYaml.replace(/^quality_sections:[\s\S]*$/m, "").trimEnd() + "\n";
+    await writeFile(join(tmpRoot, "config/pipelines/eason.yaml"), withoutQs, "utf8");
+
+    const c = await loadConfig("eason", tmpRoot);
+    expect(c.qualitySections).toEqual([]);
+  });
 });
 
 describe("loadConfig — YAML/schema error wrapping", () => {

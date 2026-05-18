@@ -23,4 +23,23 @@ describe("config schema", () => {
     });
     expect(p.quality_judge.model).toBe("claude-sonnet-4-6");
   });
+  it("accepts a pipeline file WITH quality_sections and surfaces them", () => {
+    const p = PipelineFile.parse({
+      name: "eason", model: "claude-sonnet-4-6", max_turns: 50,
+      prompt: { template: "prompts/eason/main.md", references: [] },
+      post: { pdf: true, notify: false, picks: { model: "claude-haiku-4-5", prompt: "prompts/eason/picks.md" } },
+      quality_judge: { model: "claude-sonnet-4-6", rubric: "prompts/eason/judge-rubric.md" },
+      quality_sections: ["指標儀表板", "風險提示"],
+    });
+    expect(p.quality_sections).toEqual(["指標儀表板", "風險提示"]);
+  });
+  it("accepts a pipeline file WITHOUT quality_sections (optional field)", () => {
+    const p = PipelineFile.parse({
+      name: "eason", model: "claude-sonnet-4-6", max_turns: 50,
+      prompt: { template: "prompts/eason/main.md", references: [] },
+      post: { pdf: true, notify: false, picks: { model: "claude-haiku-4-5", prompt: "prompts/eason/picks.md" } },
+      quality_judge: { model: "claude-sonnet-4-6", rubric: "prompts/eason/judge-rubric.md" },
+    });
+    expect(p.quality_sections).toBeUndefined();
+  });
 });

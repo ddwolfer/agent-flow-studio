@@ -24,6 +24,7 @@ export const PipelineFile = z.object({
     picks: z.object({ model: z.string().min(1), prompt: z.string().min(1) }),
   }),
   quality_judge: z.object({ model: z.string().min(1), rubric: z.string().min(1) }),
+  quality_sections: z.array(z.string()).optional(),
 });
 
 export type Channel = z.infer<typeof Channel>;

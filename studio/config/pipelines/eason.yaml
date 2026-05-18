@@ -16,3 +16,9 @@ post:
 quality_judge:
   model: claude-sonnet-4-6
   rubric: prompts/eason/judge-rubric.md
+quality_sections:
+  - "指標儀表板"
+  - "邏輯鏈"
+  - "今日語錄"
+  - "風險提示"
+  - "報告總結"

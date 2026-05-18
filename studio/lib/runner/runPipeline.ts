@@ -56,7 +56,7 @@ export async function runPipeline(channelId: string,
     let qualityFailures: string[] | undefined;
     try {
       const _html = await readFile(cr.htmlPath, "utf8");
-      const _q = mechanicalChecks(_html, { iso: cal.iso, weekday: cal.weekday });
+      const _q = mechanicalChecks(_html, { iso: cal.iso, weekday: cal.weekday }, cfg.qualitySections);
       qualityOk = _q.ok; qualityFailures = _q.failures;
     } catch { qualityOk = false; qualityFailures = ["report HTML unreadable"]; }
     await updateRun(o.runsRoot, runId, {
