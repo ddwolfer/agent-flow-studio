@@ -23,6 +23,21 @@ describe("loadConfig", () => {
     expect(allRefs).toContain("eason_daily");
     expect(allRefs).toContain("mcp__sqlite__create_record");
   });
+  it("eason references include transcript.md (instructs tool-result usage, no file/Bash)", async () => {
+    const c = await loadConfig("eason", ROOT);
+    // transcript.md must be present in references
+    expect(c.pipeline.prompt.references).toContain("prompts/eason/transcript.md");
+    // transcript.md content must be inlined into references array
+    const allRefs = c.references.join("\n");
+    // Must instruct model to use mcp__yt-dlp__ytdlp_download_transcript
+    expect(allRefs).toContain("mcp__yt-dlp__ytdlp_download_transcript");
+    // Must explicitly prohibit Bash/file reads
+    expect(allRefs).toContain("禁止");
+    // Must mention the text field of the tool result
+    expect(allRefs).toContain("text");
+    // Must mention truncated handling
+    expect(allRefs).toContain("truncated");
+  });
   it("throws ConfigError for an unknown channel", async () => {
     await expect(loadConfig("nope", ROOT)).rejects.toBeInstanceOf(ConfigError);
   });
