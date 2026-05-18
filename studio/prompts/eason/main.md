@@ -2,7 +2,9 @@
 
 {{calendar}}
 
-完成分析後，請額外產出一份完整的 HTML 報告，使用 /mnt/c/FINANCIAL/reports/2026-03-25_daily-macro-tactical-briefing.html 的 CSS 樣式作為參考（深藍主色、紅色強調、信號用 emoji 色塊、卡片式排版），儲存到 ${HTML_FILE}。報告標題為「{{channel.name}} 視角：台股 AI 戰情室 ${DATE}」。
+完成分析後，請額外產出一份完整的 HTML 報告，使用以下 CSS 樣式：
+{{report_css}}
+儲存到 ${HTML_FILE}。報告標題為「{{channel.name}} 視角：台股 AI 戰情室 ${DATE}」。
 
 寫作原則（嚴格遵守）：
 - **禁止編造因果解讀**：不要寫「推薦池鎖定」「主戰場」「代表真粉絲」「演算法開始推」這類未經證實的因果論述

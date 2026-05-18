@@ -21,4 +21,17 @@ describe("buildPrompt", () => {
       channel, calendarText: "C" } as const;
     expect(buildPrompt(args)).toBe(buildPrompt(args));
   });
+  it("substitutes shell-style report vars and report css", () => {
+    const out = buildPrompt({
+      promptTemplate: "save to ${HTML_FILE} on ${DATE}; log ${LOG_FILE}; css:{{report_css}}",
+      references: [], channel,
+      calendarText: "Today is 2026-05-18 (Monday).",
+      htmlPath: "/runs/r1/report.html", logPath: "/runs/r1/claude.log",
+      dateIso: "2026-05-18", reportCss: "BODY{color:red}",
+    });
+    expect(out).toContain("save to /runs/r1/report.html on 2026-05-18");
+    expect(out).toContain("log /runs/r1/claude.log");
+    expect(out).toContain("css:BODY{color:red}");
+    expect(out).not.toContain("${"); expect(out).not.toContain("{{report_css}}");
+  });
 });
