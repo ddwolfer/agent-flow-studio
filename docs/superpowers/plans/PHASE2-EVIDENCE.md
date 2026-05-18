@@ -51,3 +51,22 @@ This means: DB-persistence (the goal of this run) is **fixed & confirmed**, but 
 
 ## Confirming-run verdict
 Persistence **fixed and proven** (eason_training 0→2, eason_daily 0→1). FU-1 + FU-3 working and immediately useful. One NEW real upstream issue surfaced (transcript-not-consumed → degraded title-only reports), now precisely diagnosed thanks to FU-3. Not faked, not glossed.
+
+---
+
+# FU-4 confirming run — 2026-05-19 (transcript fix)
+
+**runId:** `2026-05-18T23-05-58-449Z_eason` · gitSha `7149c8b` · status succeeded · ~14 min · report.html 25,416 B + report.pdf.
+
+## Result: PARTIAL improvement, root cause NOT fully eliminated (honest)
+- Confidence **4.5/10 → 6.0/10** ("MA 計算完整") — improved because market/MA data is now complete (FU-2 + data servers), NOT because the transcript was used.
+- `eason_training`/`eason_daily`/`eason_picks` = **2 / 1 / 0** (unchanged from prior run): training+daily correctly **dedup-skipped** (same videos / same 2026-05-19 daily already inserted last run) — that's correct behaviour, not a regression; persistence was already proven. `eason_picks` STILL **0**.
+- `qualityOk:false` — report still missing `今日語錄`/`風險提示`/`報告總結` (the quote-dependent sections). FU-1 gate correctly flags it thin.
+
+## Decisive claude.log line (the real ceiling)
+> 「逐字稿｜已下載 **59,128 字元，但超過工具直送上限無法讀取**」
+
+The cleaned transcript was 59,128 chars — OVER `STUDIO_TRANSCRIPT_MAX_CHARS` (default 48,000) → `_bound_transcript` returned head+tail+`[…elided…]` with `truncated:true`. The model treated the truncated/large tool result as effectively **unreadable** and fell back to data-only analysis (no Eason quotes → no `語錄`, no picks). i.e. FU-4's deterministic clean+elide is not enough: even ~48k chars in a single MCP tool result is past what the model will reliably consume, AND head/tail elision loses the contiguous quotes the 5-layer Eason analysis needs.
+
+## Honest conclusion
+Option (b) as implemented (return big cleaned text inline) **hit a real ceiling**: MCP tool-result size + the model's unwillingness to analyse a `truncated` blob. Persistence/data/quality-gate/logging are all solid; the remaining gap is purely "deliver the transcript's *substance* in a form small + faithful enough to actually be used". This needs a strategy change (a condense/digest step, i.e. closer to option (c)), not another tweak of the same approach. Surfaced to user for the decision; not faked.
