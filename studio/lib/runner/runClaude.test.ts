@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runClaude } from "./runClaude";
@@ -39,5 +39,31 @@ describe("runClaude", () => {
     expect(seen).toContain("/x/mcp.json");
     expect(seen).toContain("--strict-mcp-config");
     expect(seen.join(",")).toContain("mcp__fred__fred_get_series,Write");
+  });
+
+  it("creates claude.log when logPath is provided (fake-claude fixture)", async () => {
+    const out = join(dir, "report.html");
+    const logPath = join(dir, "claude.log");
+    const res = await runClaude({
+      prompt: "hi", model: "m", maxTurns: 1, cwd: dir, htmlOut: out,
+      claudeBin: FAKE, env: { FAKE_CLAUDE_OUT: out }, spawner: spawnProc,
+      logPath,
+    });
+    expect(res.exitCode).toBe(0);
+    // fake-claude.sh writes to stdout (or the file); the log file must exist
+    const logContent = await readFile(logPath, "utf8");
+    // log file exists and has the expected sections
+    expect(logContent).toContain("=== stdout ===");
+    expect(logContent).toContain("=== stderr ===");
+  });
+
+  it("logPath is optional — omitting it keeps backward compat (no log file)", async () => {
+    const out = join(dir, "report.html");
+    const res = await runClaude({
+      prompt: "hi", model: "m", maxTurns: 1, cwd: dir, htmlOut: out,
+      claudeBin: FAKE, env: { FAKE_CLAUDE_OUT: out }, spawner: spawnProc,
+      // no logPath
+    });
+    expect(res.exitCode).toBe(0);
   });
 });

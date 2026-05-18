@@ -29,12 +29,13 @@ export async function runPipeline(channelId: string,
     await updateRun(o.runsRoot, runId, { status: "running", pid: process.pid });
     const cal = calendarFacts(o.now ?? new Date());
     const htmlOut = join(o.runsRoot, runId, "report.html");
+    const claudeLogPath = join(o.runsRoot, runId, "claude.log");
     let reportCss = "";
     try { reportCss = await readFile(join(o.studioRoot, "prompts/eason/report.css"), "utf8"); } catch { reportCss = ""; }
     const prompt = buildPrompt({
       promptTemplate: cfg.promptTemplate, references: cfg.references,
       channel: cfg.channel, calendarText: cal.text,
-      htmlPath: htmlOut, logPath: join(o.runsRoot, runId, "claude.log"),
+      htmlPath: htmlOut, logPath: claudeLogPath,
       dateIso: cal.iso, reportCss,
     });
     const cr = await runClaude({
@@ -44,6 +45,7 @@ export async function runPipeline(channelId: string,
         ? { FAKE_CLAUDE_OUT: htmlOut } : undefined, spawner: o.spawner,
       mcpConfigPath: o.mcpConfigPath,
       allowedTools: o.allowedTools,
+      logPath: claudeLogPath,
     });
     const pp = await postProcess({
       htmlPath: cr.htmlPath, financeRoot,

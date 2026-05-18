@@ -8,6 +8,7 @@ export interface RunClaudeArgs {
   spawner: Spawner;                          // injected; prod = spawnProc
   mcpConfigPath?: string;
   allowedTools?: string[];
+  logPath?: string;                         // optional: capture stdout+stderr to this file
 }
 export interface RunClaudeResult { exitCode: number; htmlPath: string; }
 
@@ -21,7 +22,7 @@ export async function runClaude(a: RunClaudeArgs): Promise<RunClaudeResult> {
         ...(a.allowedTools && a.allowedTools.length
           ? ["--allowedTools", a.allowedTools.join(",")] : []),
       ];
-  const { code } = await a.spawner(bin, args, { cwd: a.cwd, env: a.env });
+  const { code } = await a.spawner(bin, args, { cwd: a.cwd, env: a.env, logPath: a.logPath });
   if (code !== 0) throw new ClaudeRunError(`claude exited ${code}`);
   return { exitCode: 0, htmlPath: a.htmlOut };
 }

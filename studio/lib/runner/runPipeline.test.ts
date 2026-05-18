@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readdir, access } from "node:fs/promises";
+import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runPipeline } from "./runPipeline";
@@ -39,5 +40,21 @@ describe("runPipeline", () => {
     expect(r.status).toBe("succeeded");
     expect(r.qualityOk).toBe(false);
     expect(Array.isArray(r.qualityFailures)).toBe(true);
+  });
+
+  it("produces claude.log under runs/<id>/ after a fake run", async () => {
+    const r = await runPipeline("eason", {
+      studioRoot: STUDIO, runsRoot, claudeBin: FAKE,
+      spawner: async (file, args, opts) =>
+        file.endsWith("fake-claude.sh") ? spawnProc(file, args, opts) : { code: 0 },
+    });
+    expect(r.status).toBe("succeeded");
+    // run ID comes from the run record — derive run dir from runsRoot
+    const runDirs = await readdir(runsRoot);
+    expect(runDirs).toHaveLength(1);
+    const runDir = runDirs[0];
+    if (!runDir) throw new Error("Expected exactly one run directory");
+    const claudeLog = join(runsRoot, runDir, "claude.log");
+    await expect(access(claudeLog, constants.F_OK)).resolves.toBeUndefined();
   });
 });
