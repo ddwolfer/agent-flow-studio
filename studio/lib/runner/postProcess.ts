@@ -10,6 +10,9 @@ export interface PostProcessArgs {
   financeRoot: string;             // path to inherited financial-report-system/
   pdfPath?: string;
   spawner: Spawner;
+  /** Pass through from RunPipelineOpts so the picks claude call gets sqlite MCP access. */
+  mcpConfigPath?: string;
+  allowedTools?: string[];
 }
 export interface PostProcessResult {
   pdfOk?: boolean; notifyOk?: boolean; picksOk?: boolean; pdfPath?: string;
@@ -35,9 +38,14 @@ export async function postProcess(a: PostProcessArgs): Promise<PostProcessResult
     res.notifyOk = code === 0;     // failure recorded, never thrown
   }
   if (a.runPicks) {
-    const { code } = await a.spawner("claude",
-      ["-p", a.picksPrompt, "--model", a.post.picks.model],
-      { cwd: a.financeRoot });
+    const picksArgs = [
+      "-p", a.picksPrompt,
+      "--model", a.post.picks.model,
+      ...(a.mcpConfigPath ? ["--mcp-config", a.mcpConfigPath, "--strict-mcp-config"] : []),
+      ...(a.allowedTools && a.allowedTools.length
+        ? ["--allowedTools", a.allowedTools.join(",")] : []),
+    ];
+    const { code } = await a.spawner("claude", picksArgs, { cwd: a.financeRoot });
     res.picksOk = code === 0;
   }
   return res;

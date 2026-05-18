@@ -53,4 +53,39 @@ describe("postProcess", () => {
       financeRoot: "/repo/financial-report-system", spawner: spy });
     expect(seen.some((f) => /chrome/i.test(f))).toBe(true);
   });
+  it("picks claude call includes --mcp-config and --allowedTools when mcpConfigPath is set", async () => {
+    const calls: { file: string; args: string[] }[] = [];
+    const spy: Spawner = async (file, args) => { calls.push({ file, args: args ?? [] }); return { code: 0 }; };
+    await postProcess({
+      htmlPath: "/tmp/r.html",
+      post: { pdf: false, notify: false, picks: { model: "claude-haiku-4-5", prompt: "p" } } as any,
+      runPicks: true, picksPrompt: "PICKS_PROMPT",
+      financeRoot: "/repo/financial-report-system", spawner: spy,
+      mcpConfigPath: "/path/to/mcp.json",
+      allowedTools: ["Read", "mcp__sqlite__query", "mcp__sqlite__create_record", "mcp__sqlite__update_records"],
+    });
+    const claudeCall = calls.find((c) => c.file === "claude");
+    expect(claudeCall).toBeTruthy();
+    expect(claudeCall!.args).toContain("--mcp-config");
+    expect(claudeCall!.args).toContain("/path/to/mcp.json");
+    expect(claudeCall!.args).toContain("--strict-mcp-config");
+    const toolsArg = claudeCall!.args[claudeCall!.args.indexOf("--allowedTools") + 1];
+    expect(toolsArg).toContain("mcp__sqlite__query");
+    expect(toolsArg).toContain("mcp__sqlite__create_record");
+  });
+  it("picks claude call omits --mcp-config and --allowedTools when mcpConfigPath is absent", async () => {
+    const calls: { file: string; args: string[] }[] = [];
+    const spy: Spawner = async (file, args) => { calls.push({ file, args: args ?? [] }); return { code: 0 }; };
+    await postProcess({
+      htmlPath: "/tmp/r.html",
+      post: { pdf: false, notify: false, picks: { model: "claude-haiku-4-5", prompt: "p" } } as any,
+      runPicks: true, picksPrompt: "PICKS_PROMPT",
+      financeRoot: "/repo/financial-report-system", spawner: spy,
+      // no mcpConfigPath / allowedTools
+    });
+    const claudeCall = calls.find((c) => c.file === "claude");
+    expect(claudeCall).toBeTruthy();
+    expect(claudeCall!.args).not.toContain("--mcp-config");
+    expect(claudeCall!.args).not.toContain("--allowedTools");
+  });
 });

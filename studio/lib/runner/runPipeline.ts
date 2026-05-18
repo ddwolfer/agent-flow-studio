@@ -49,6 +49,8 @@ export async function runPipeline(channelId: string,
       htmlPath: cr.htmlPath, financeRoot,
       post: { ...cfg.pipeline.post, notify: o.notify ?? cfg.pipeline.post.notify },
       runPicks: true, picksPrompt: cfg.picksPrompt, spawner: o.spawner,
+      mcpConfigPath: o.mcpConfigPath,
+      allowedTools: o.allowedTools,
     });
     let qualityOk: boolean | undefined;
     let qualityFailures: string[] | undefined;
