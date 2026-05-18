@@ -5,6 +5,8 @@ DB = os.environ.get("STUDIO_DB_PATH", "")
 SCHEMA = pathlib.Path(__file__).parents[3] / "financial-report-system" / "db" / "schema.sql"
 
 def _conn():
+    if not DB:
+        raise RuntimeError("STUDIO_DB_PATH env var is required (set via mcp.json)")
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
     return con
@@ -28,6 +30,8 @@ def _query(sql, params=None):
     con.close()
     return out
 
+# NOTE: `table`/column names are interpolated (values are parameterised via ?).
+# Safe here: identifiers come only from the trusted local Eason prompt, never web input.
 def _create_record(table, values: dict):
     cols = ",".join(values.keys())
     ph = ",".join("?" for _ in values)
