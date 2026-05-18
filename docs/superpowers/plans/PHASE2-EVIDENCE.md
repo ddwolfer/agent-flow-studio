@@ -23,5 +23,31 @@
 
 3. **`runClaude` writes no `claude.log`.** Run dir has only run.json/report.html/report.pdf. Transcript source + per-turn trace not captured → harder to debug. **Follow-up:** have runClaude tee stdout/stderr to `runs/<id>/claude.log`.
 
-## Verdict
-End-to-end pipeline **works**: real multi-source data → genuine richly-structured Eason report (HTML+PDF) in ~14 min, fully automated, local. Three real follow-ups above (none block report production; #1 and #2 matter for quality-gating and the persistence/tracking feature). The subjective "is the analysis genuinely good / in Eason's style" judgement is the user's.
+## Verdict (first run)
+End-to-end pipeline **works**: real multi-source data → genuine richly-structured Eason report (HTML+PDF) in ~14 min, fully automated, local. Three real follow-ups above. The subjective quality judgement is the user's.
+
+---
+
+# Confirming run — 2026-05-19 (after FU-1/2/3 merged)
+
+**runId:** `2026-05-18T21-29-59-957Z_eason` · gitSha `893f731` · status **succeeded** · ~16 min · report.html 24,625 B + report.pdf 1.7 MB.
+
+## THE key question — SQLite persistence: FIXED ✅
+| table | before | after |
+|---|---|---|
+| `eason_training` | 0 | **2** (real rows: videos 4bllC7kheuo 2026-05-18 + 5yncQd1ZSC4 2026-05-15, full titles/urls/month_batch) |
+| `eason_daily` | 0 | **1** (date 2026-05-19, 4 pillars filled w/ real TWSE/MU data, overall_signal NEUTRAL) |
+| `eason_picks` | 0 | 0 (see new finding below — no picks to extract this run) |
+
+FU-2 **cause A confirmed working** — `persistence.md` made the model actually write training+daily rows. `claude.log` (FU-3, now captured & decisive) shows *"All three records written"* + a written-records table.
+
+## FU-1 quality gate — now a TRUE signal ✅
+`qualityOk:false`, missing `邏輯鏈/今日語錄/報告總結`. This is **correct** — this report genuinely IS structurally thinner than the first (see new finding). The gate now meaningfully catches degraded reports instead of false-negatives.
+
+## NEW real finding — transcript downloaded but NOT consumed ⚠️
+`claude.log` is decisive: *"兩支影片的逐字稿（94k/131k 字元的單行檔）無法在未授權 Bash 的情況下讀取... 報告中所有「Eason 觀點」均來自影片標題,非逐字稿引用,信心值 4.5/10"*.
+The transcript is fetched but the inherited skill flow reads the large saved transcript file via a `python3`/Bash step that is **not in our `allowedTools`** (we allow only the 13 MCP tools + Write + Read, not Bash). So the model fell back to **title-only analysis** (self-confidence 4.5/10) → no concrete Eason picks (`eason_picks` legitimately 0) and a thinner report (no 5-layer chain / quotes / summary).
+This means: DB-persistence (the goal of this run) is **fixed & confirmed**, but report *quality* is now gated on a separate upstream issue — **the transcript must actually reach the analysis**. Options: (a) add a scoped Bash/python allowance for transcript reading; (b) make the yt-dlp MCP return transcript text inline so no file-read is needed; (c) chunk/summarise the transcript within the MCP. Recommended next slice.
+
+## Confirming-run verdict
+Persistence **fixed and proven** (eason_training 0→2, eason_daily 0→1). FU-1 + FU-3 working and immediately useful. One NEW real upstream issue surfaced (transcript-not-consumed → degraded title-only reports), now precisely diagnosed thanks to FU-3. Not faked, not glossed.
