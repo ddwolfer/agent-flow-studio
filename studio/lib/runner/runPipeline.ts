@@ -25,11 +25,11 @@ export async function runPipeline(channelId: string,
   const snap = { gitSha: gitSha(o.studioRoot),
     promptHashes: hashAll({ main: cfg.promptTemplate, picks: cfg.picksPrompt }) };
   const runId = await createRun(o.runsRoot, channelId, snap);
+  const claudeLogPath = join(o.runsRoot, runId, "claude.log");
   try {
     await updateRun(o.runsRoot, runId, { status: "running", pid: process.pid });
     const cal = calendarFacts(o.now ?? new Date());
     const htmlOut = join(o.runsRoot, runId, "report.html");
-    const claudeLogPath = join(o.runsRoot, runId, "claude.log");
     let reportCss = "";
     try { reportCss = await readFile(join(o.studioRoot, "prompts/eason/report.css"), "utf8"); } catch { reportCss = ""; }
     const prompt = buildPrompt({
@@ -72,7 +72,7 @@ export async function runPipeline(channelId: string,
     await updateRun(o.runsRoot, runId, {
       status: "failed",
       error: { stage, message: e instanceof Error ? e.message : String(e),
-        claudeLogPath: join(o.runsRoot, runId, "claude.log") },
+        claudeLogPath },
     });
   }
   return readRun(o.runsRoot, runId);
