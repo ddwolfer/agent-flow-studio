@@ -43,7 +43,16 @@ def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
     txt = _fetch_captions(video_url, [language, "zh-TW", "zh-Hant", "zh", "en"])
     if txt:
         return {"source": "captions", "text": txt}
-    return {"source": "none", "text": "", "note": "no captions; fallback pending"}
+    try:
+        import sys, pathlib
+        sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "lib"))
+        import gemma_transcribe as _g
+        text = _g.transcribe(video_url)
+        if text.strip():
+            return {"source": "gemma4:e4b", "text": text}
+    except Exception as e:
+        return {"source": "none", "text": "", "error": f"fallback failed: {e}"}
+    return {"source": "none", "text": ""}
 
 if __name__ == "__main__":
     mcp.run()
