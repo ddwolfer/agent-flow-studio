@@ -10,7 +10,7 @@
 The v1 skeleton is complete and test-verified, but a real run is blocked because the inherited `/eason-analysis` skill calls 5 MCP servers that exist only on the original author's machine. User decisions:
 
 - **Build all 5 MCP servers ourselves** (do not wait for the friend's config).
-- **Subtitle strategy:** existing captions first; if none, **local faster-whisper** transcription (ported from the user's `youtube-video-research` skill's `whisper_local.py`). Fully local, no cloud, no extra keys.
+- **Subtitle strategy:** existing captions first; if none, **local `gemma4:e4b` (Gemma 3n E4B, multimodal/audio) via the already-installed Ollama** transcribes the audio. Fully local, no cloud, no extra keys. faster-whisper is NOT built now (listed only as an optional future safeguard).
 - **FRED:** reuse `FRED_API_KEY` from the inherited `financial-report-system/scripts/.env` (user authorized).
 - **Messaging deferred:** Discord/LINE/Telegram entirely out of scope now; revisit after local reports look good. Notify keys in `.env` stay untouched/unused.
 - **Local-first:** success = a report HTML/PDF saved on this machine.
@@ -33,19 +33,19 @@ Tickers/series the prompt actually requests (must work end-to-end): yt search `"
 
 ```
 studio/mcp/                      (NEW — one Python toolchain)
-├─ .venv/                        (gitignored; faster-whisper, yfinance, yt-dlp, mcp sdk)
+├─ .venv/                        (gitignored; yfinance, yt-dlp, mcp sdk, ollama client)
 ├─ requirements.txt
 ├─ mcp.json.tmpl                 (registry template; runner renders mcp.json with resolved paths/keys)
 ├─ servers/
-│  ├─ ytdlp_server.py            (ytdlp_search_videos, ytdlp_download_transcript + whisper fallback)
+│  ├─ ytdlp_server.py            (ytdlp_search_videos, ytdlp_download_transcript + gemma fallback)
 │  ├─ twse_server.py             (5 tools)
 │  ├─ yahoo_server.py            (2 tools, yfinance)
 │  ├─ fred_server.py             (fred_get_series; key from env)
 │  └─ sqlite_server.py           (query / create_record / update_records on financial.db)
-└─ lib/whisper_fallback.py       (ported from whisper_local.py: yt-dlp audio → ffmpeg 16k mono → faster-whisper)
+└─ lib/gemma_transcribe.py       (yt-dlp audio → ffmpeg → chunk → local gemma4:e4b via Ollama → stitched transcript)
 ```
 
-All 5 servers are **Python** (one `.venv`, one `requirements.txt`) using the official MCP Python SDK. Rationale: yt-dlp + faster-whisper are Python/CLI-native; yfinance is the most robust Yahoo path; one runtime beats four. Each server is its own stdio process spawned by Claude Code via `--mcp-config`.
+All 5 servers are **Python** (one `.venv`, one `requirements.txt`) using the official MCP Python SDK. Rationale: yt-dlp is Python/CLI-native; yfinance is the most robust Yahoo path; the subtitle fallback calls the already-installed local Ollama model; one runtime beats four. Each server is its own stdio process spawned by Claude Code via `--mcp-config`.
 
 **Runner integration (the only changes to v1 code):**
 
@@ -68,32 +68,33 @@ All 5 servers are **Python** (one `.venv`, one `requirements.txt`) using the off
 | `STUDIO_ROOT = process.cwd()` fragile | Replace with module-relative resolution: `fileURLToPath(new URL("../../", import.meta.url))` in `paths.ts`. |
 | sqlite DB / schema may be absent | `sqlite_server.py` ensures the DB exists; if the 3 eason tables are missing it applies `financial-report-system/db/schema.sql`. DB path defaults to `financial-report-system/data/financial.db`, overridable via env in `mcp.json`. |
 
-## 4. Subtitle Fallback (ported from user's `whisper_local.py`)
+## 4. Subtitle Fallback — local `gemma4:e4b` via Ollama
 
 Inside `ytdlp_download_transcript(language)`:
 
-1. Try existing captions via `yt-dlp` (`--write-subs`/`--write-auto-subs`, language order `zh-Hant → zh → en` as the skill specifies; also accept `zh-TW`).
-2. If none: `yt-dlp -f bestaudio` (audio only, no full video) → `ffmpeg` → 16 kHz mono WAV → `faster-whisper` transcribe (`vad_filter=True`, `min_silence_duration_ms=500`, language auto unless caller forces). Return plain transcript text (same shape as the captions path, so the skill is agnostic).
-3. Model: default `small` (CPU-friendly, ~3× realtime) with env override `STUDIO_WHISPER_MODEL` (`base|small|medium|large-v3`). Document the speed/quality tradeoff in the server.
-4. Dependencies: `faster-whisper`, `yt-dlp`, `ffmpeg` (verified present: ffmpeg 8.0.1; yt-dlp 2026.03.17; faster-whisper to be pip-installed into `.venv`). The user's repo's Gemini-video last-resort path is **excluded** (needs a cloud key; out of scope).
+1. Try existing captions via `yt-dlp` (`--write-subs`/`--write-auto-subs`, language order `zh-Hant → zh → en` as the skill specifies; also accept `zh-TW`). If found, return that text (cheapest path, unchanged from inherited behaviour).
+2. If none: `yt-dlp -f bestaudio` (audio only, no full video download) → `ffmpeg` normalises to a mono 16 kHz file → **split into ~3–5 minute chunks** (finance videos run 20–60 min; a single blob exceeds practical local-model input) → each chunk sent to local **`gemma4:e4b`** (Gemma 3n E4B, audio-capable) through the already-running **Ollama** with a fixed "transcribe this Mandarin audio verbatim, output plain text only" instruction → chunk texts concatenated in order. Return plain transcript text (same shape as the captions path, so the inherited skill is agnostic to which path produced it).
+3. Config: model id default `gemma4:e4b`, chunk length, and Ollama host overridable via env (`STUDIO_TRANSCRIBE_MODEL`, `STUDIO_TRANSCRIBE_CHUNK_SEC`, `OLLAMA_HOST`). Defaults chosen so it works with zero config on this machine.
+4. **Verify-before-rely:** the build step does NOT trust this blindly — it runs `gemma4:e4b` on a deliberately caption-less Mandarin short clip and confirms a non-empty, plausibly-correct zh transcript before the fallback is wired into the live path. If `gemma4:e4b` audio output proves unusable, the documented contingency is faster-whisper (NOT built now — see §6/§7).
+5. Dependencies: `yt-dlp` (2026.03.17, present), `ffmpeg` (8.0.1, present), Ollama with `gemma4:e4b` (present, 9.6 GB). The user's repo's Gemini-video cloud last-resort is **excluded** (needs a cloud key; out of scope).
 
 ## 5. Verification Strategy (self-verified; only subjective quality escalates)
 
 Per project memory `feedback_self_verification_first`. Each piece is self-tested before its commit:
 
-- **Per MCP server smoke tests** (real calls, recorded in the slice's commit): FRED real key → `T10Y2Y` latest value; TWSE → `get_daily_market_trading_info` returns today/last-session data; Yahoo → `get_stock_info("2330.TW")` returns a price + P/E; yt-dlp → `ytdlp_search_videos("張貽程 外資超錢線", 1, "week")` returns a video; transcript on a known-captioned short video; **whisper fallback** on a deliberately caption-less short clip yields non-empty text; sqlite → temp DB query/create/update round-trip + schema auto-init.
+- **Per MCP server smoke tests** (real calls, recorded in the slice's commit): FRED real key → `T10Y2Y` latest value; TWSE → `get_daily_market_trading_info` returns today/last-session data; Yahoo → `get_stock_info("2330.TW")` returns a price + P/E; yt-dlp → `ytdlp_search_videos("張貽程 外資超錢線", 1, "week")` returns a video; transcript on a known-captioned short video; **gemma4:e4b fallback** on a deliberately caption-less Mandarin short clip yields a non-empty, plausibly-correct zh transcript; sqlite → temp DB query/create/update round-trip + schema auto-init.
 - **Contract tests:** each tool's name + return keys match what the inherited prompt consumes (table in §1). A TS test asserts the rendered `mcp.json` registers exactly the 5 servers and that the allowed-tools list is exactly the 13 MCP tool ids + `Write` + `Read` (the authoritative set in §2).
 - **End-to-end real run:** `runPipeline("eason")` with the real `claude` + real `mcp.json`. Self-checks I run and read myself: report HTML exists at the run path; `mechanicalChecks` result; structural diff vs `financial-report-system/samples/eason-sample.html` (sections, signal blocks, picks table well-formed); calendar facts correct; no >7-day-old or future-dated news.
 - **Escalate to user only:** the subjective "is this Eason analysis genuinely insightful / does it match his style" judgment — presented with the rendered report for their call.
 
 ## 6. Out of Scope (explicit YAGNI)
 
-Messaging (Discord/LINE/Telegram) and `notify.sh` reuse; the ReactFlow node canvas; the other inherited pipelines (游庭皓 briefing, stock-news); `chart` MCP; multi-tenant/hosted/sellable concerns; auto-scheduling/cron from the UI; perfecting Yahoo/TWSE beyond what the Eason ticker set needs.
+Messaging (Discord/LINE/Telegram) and `notify.sh` reuse; the ReactFlow node canvas; the other inherited pipelines (游庭皓 briefing, stock-news); `chart` MCP; multi-tenant/hosted/sellable concerns; auto-scheduling/cron from the UI; perfecting Yahoo/TWSE beyond what the Eason ticker set needs; **faster-whisper** (kept only as a documented contingency if `gemma4:e4b` audio transcription proves unusable in step 7 — not built in this phase).
 
 ## 7. Risks
 
 - **Yahoo public endpoints** drift; `yfinance` mitigates but a ticker (e.g. `DX-Y.NYB`, `BZ=F`) may intermittently fail → servers return a structured `{error}` the prompt can tolerate (skill already proceeds data-partial).
-- **Whisper latency** on long videos with CPU: `small` model + audio-only keeps it bounded; user can raise model via env when quality matters.
+- **gemma4:e4b audio quality/latency** on long Mandarin finance monologue is the biggest unknown: mitigated by audio-only extraction + ~3–5 min chunking, and gated by the step-7 verify-before-rely check. If output is poor → faster-whisper contingency (§6). Captioned videos (the common case) never hit this path.
 - **TWSE Open API** shapes per-endpoint; we implement exactly the 5 tools' fields the prompt reads, not the whole API.
 - **Tool-name fidelity:** the inherited prompt uses bare names (`ytdlp_search_videos`); under MCP these surface as `mcp__yt-dlp__ytdlp_search_videos`. If the skill text's bare names don't auto-resolve, `buildPrompt` will additionally inject an explicit tool-name map note. (Validated during the contract test before the real run.)
 
@@ -105,7 +106,7 @@ Messaging (Discord/LINE/Telegram) and `notify.sh` reuse; the ReactFlow node canv
 4. `twse_server.py` (5 tools) + real smoke.
 5. `yahoo_server.py` (2 tools) + real smoke.
 6. `ytdlp_server.py` search+transcript (captions only) + real smoke.
-7. `whisper_fallback.py` + integrate into transcript tool + caption-less smoke.
+7. `gemma_transcribe.py` (yt-dlp audio → ffmpeg → chunk → `gemma4:e4b` via Ollama → stitch) + integrate into the transcript tool + verify-before-rely caption-less Mandarin smoke.
 8. `mcpConfig.ts` (render `mcp.json`, read FRED key) + `runClaude` `--mcp-config/--allowed-tools` + contract test.
 9. `buildPrompt` placeholder substitution + bundled `report.css` + golden test update.
 10. `runPipeline` mechanicalChecks wiring + chrome-path resolution + `STUDIO_ROOT` fix.
