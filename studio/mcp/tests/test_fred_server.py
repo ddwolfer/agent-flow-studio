@@ -13,3 +13,15 @@ def test_pick_latest_and_prev():
     ]}
     assert m._latest(obs) == {"date": "2026-04-01", "value": 4.3,
                               "prev_date": "2026-03-01", "prev_value": 4.1}
+
+def test_malformed_value_returns_error_not_crash():
+    m = _load()
+    bad = {"observations": [{"date": "2026-04-01", "value": "N/A"}]}
+    r = m._latest(bad)
+    assert "error" in r and "unparseable" in r["error"]
+
+def test_missing_date_returns_error_not_crash():
+    m = _load()
+    bad = {"observations": [{"value": "4.2"}]}  # no 'date' key
+    r = m._latest(bad)
+    assert "error" in r

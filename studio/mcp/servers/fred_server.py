@@ -9,9 +9,13 @@ def _latest(payload: dict):
         return {"error": "no valid observations"}
     last = valid[-1]
     prev = valid[-2] if len(valid) > 1 else {}
-    return {"date": last["date"], "value": float(last["value"]),
-            "prev_date": prev.get("date"),
-            "prev_value": float(prev["value"]) if prev else None}
+    try:
+        out = {"date": last["date"], "value": float(last["value"]),
+               "prev_date": prev.get("date"),
+               "prev_value": float(prev["value"]) if prev.get("value") not in (None, "", ".") else None}
+    except (KeyError, ValueError, TypeError) as e:
+        return {"error": f"unparseable observation: {e}"}
+    return out
 
 mcp = FastMCP("fred")
 
