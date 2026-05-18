@@ -28,4 +28,16 @@ describe("runClaude", () => {
       spawner: spawnProc,
     })).rejects.toBeInstanceOf(ClaudeRunError);
   });
+
+  it("passes mcp-config + allowedTools to a real (non-fake) bin", async () => {
+    const seen: string[] = [];
+    const spy = async (_f: string, args: string[]) => { seen.push(...args); return { code: 0 }; };
+    await runClaude({ prompt: "p", model: "m", maxTurns: 5, cwd: ".", htmlOut: "/tmp/o.html",
+      claudeBin: "claude", spawner: spy as any,
+      mcpConfigPath: "/x/mcp.json", allowedTools: ["mcp__fred__fred_get_series", "Write"] });
+    expect(seen).toContain("--mcp-config");
+    expect(seen).toContain("/x/mcp.json");
+    expect(seen).toContain("--strict-mcp-config");
+    expect(seen.join(",")).toContain("mcp__fred__fred_get_series,Write");
+  });
 });
