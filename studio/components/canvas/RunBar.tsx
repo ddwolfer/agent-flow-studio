@@ -48,13 +48,19 @@ export function RunBar({ channelId, onActive }:
     s === "succeeded" ? (q ? "#15803d" : "#b45309")
     : s === "failed" ? "#b91c1c" : s === "running" ? "#2563eb" : "#6b7280";
 
+  // Honest run-state: a run is in flight if the newest run with a known status
+  // is running/pending. No fake Stop — just reflect reality + block re-trigger.
+  const newest = runs.find((d) => d.status) ?? runs[0];
+  const inFlight = newest?.status === "running" || newest?.status === "pending";
+  const disabled = busy || inFlight;
+
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 12px",
       borderBottom: "1px solid #30363d", fontSize: 13, color: "#cbd5e1" }}>
-      <button onClick={() => void trigger()} disabled={busy}
-        style={{ background: "#2563eb", color: "#fff", border: 0, borderRadius: 6,
-          padding: "6px 14px", cursor: busy ? "default" : "pointer" }}>
-        {busy ? "啟動中…" : `▶ Run ${channelId}`}
+      <button onClick={() => void trigger()} disabled={disabled}
+        style={{ background: disabled ? "#374151" : "#2563eb", color: "#fff", border: 0,
+          borderRadius: 6, padding: "6px 14px", cursor: disabled ? "default" : "pointer" }}>
+        {busy ? "啟動中…" : inFlight ? "● 跑中…" : `▶ Run ${channelId}`}
       </button>
       <button onClick={() => void load()} style={{ background: "transparent",
         color: "#9ca3af", border: "1px solid #374151", borderRadius: 6, padding: "5px 10px" }}>
