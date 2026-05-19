@@ -6,6 +6,7 @@ import { runClaude } from "./runClaude";
 import { digestAllowedTools } from "./allowedTools";
 import { ClaudeRunError } from "./errors";
 
+// a valid minimal digest is several hundred bytes; 200 is a safety floor to catch empty/truncated output
 const MIN_DIGEST_BYTES = 200;
 
 export interface DigestPassArgs {

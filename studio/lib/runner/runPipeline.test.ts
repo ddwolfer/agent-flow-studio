@@ -59,18 +59,30 @@ describe("runPipeline", () => {
   });
 
   it("skips the digest pass under the fake CLI and still succeeds", async () => {
-    let nonFakeCalls = 0;
+    let nonFakeClaudeCalls = 0;
     const r = await runPipeline("eason", {
       studioRoot: STUDIO, runsRoot, claudeBin: FAKE,
       spawner: async (file, args, opts) => {
         if (file.endsWith("fake-claude.sh")) return spawnProc(file, args, opts);
-        nonFakeCalls++; return { code: 0 };
+        // count only non-fake claude invocations (not Chrome/bash helpers)
+        if (file === "claude") nonFakeClaudeCalls++;
+        return { code: 0 };
       },
     });
     expect(r.status).toBe("succeeded");
-    // digest pass would have been an extra non-fake claude call; it must be skipped
+    // digest is skipped (isFake); only the picks claude call remains — not 2
+    expect(nonFakeClaudeCalls).toBe(1);
     const { readdir } = await import("node:fs/promises");
     const runDirs = await readdir(runsRoot);
     expect(runDirs).toHaveLength(1);
+  });
+
+  it("records status=failed with stage=digest when the digest pass fails", async () => {
+    const r = await runPipeline("eason", {
+      studioRoot: STUDIO, runsRoot, claudeBin: "claude", // not fake — digest runs
+      spawner: async () => ({ code: 0 }),                // writes no digest file
+    });
+    expect(r.status).toBe("failed");
+    expect(r.error?.stage).toBe("digest");
   });
 });

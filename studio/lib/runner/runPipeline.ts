@@ -66,6 +66,7 @@ export async function runPipeline(channelId: string,
       allowedTools: o.allowedTools,
       logPath: claudeLogPath,
     });
+    failStage = "postProcess";
     const pp = await postProcess({
       htmlPath: cr.htmlPath, financeRoot,
       post: { ...cfg.pipeline.post, notify: o.notify ?? cfg.pipeline.post.notify },
