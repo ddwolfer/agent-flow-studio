@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
+import type { RunProgress } from "@/app/canvas/nodes";
 
-interface RunStatus { id: string; status?: string; qualityOk?: boolean; }
+interface RunStatus { id: string; status?: string; qualityOk?: boolean; progress?: RunProgress; }
 
-export function RunBar({ channelId }: { channelId: string }) {
+export function RunBar({ channelId, onActive }:
+  { channelId: string; onActive?: (s: { status?: string; progress?: RunProgress }) => void }) {
   const [runs, setRuns] = useState<RunStatus[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -13,13 +15,23 @@ export function RunBar({ channelId }: { channelId: string }) {
     const detailed = await Promise.all(top.map(async (id) => {
       try {
         const r = await (await fetch(`/api/runs/${encodeURIComponent(id)}`)).json();
-        return { id, status: r.status, qualityOk: r.qualityOk } as RunStatus;
+        return { id, status: r.status, qualityOk: r.qualityOk, progress: r.progress } as RunStatus;
       } catch { return { id } as RunStatus; }
     }));
     setRuns(detailed);
-  }, []);
+    const newest = detailed[0];
+    if (newest && onActive) onActive({ status: newest.status, progress: newest.progress });
+    return newest;
+  }, [onActive]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (runs[0]?.status === "running" || runs[0]?.status === "pending") void load();
+    }, 4000);
+    return () => clearInterval(t);
+  }, [runs, load]);
 
   const trigger = async () => {
     setBusy(true);
@@ -29,9 +41,7 @@ export function RunBar({ channelId }: { channelId: string }) {
         body: JSON.stringify({ channelId }),
       });
       setTimeout(() => { void load(); setBusy(false); }, 2000);
-    } catch {
-      setBusy(false);
-    }
+    } catch { setBusy(false); }
   };
 
   const color = (s?: string, q?: boolean) =>

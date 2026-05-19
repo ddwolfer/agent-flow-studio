@@ -1,24 +1,32 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   ReactFlow, Background, Controls, type Node, type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { CANVAS_NODES, CANVAS_EDGES } from "./canvas/nodes";
+import { CANVAS_NODES, CANVAS_EDGES, nodeRunStatus, type RunProgress } from "./canvas/nodes";
 import { StageNode } from "@/components/canvas/StageNode";
 import { RunBar } from "@/components/canvas/RunBar";
 import { SidePanel } from "@/components/canvas/SidePanel";
 
 const nodeTypes = { stage: StageNode };
-const nodes: Node[] = CANVAS_NODES as unknown as Node[];
 const edges: Edge[] = CANVAS_EDGES.map((e) => ({ ...e, animated: true }));
 
 export default function Home() {
   const [selected, setSelected] = useState<string | null>(null);
+  const [active, setActive] = useState<{ status?: string; progress?: RunProgress }>({});
   const onNodeClick = useCallback((_: unknown, n: Node) => setSelected(n.id), []);
+  const onActive = useCallback(
+    (s: { status?: string; progress?: RunProgress }) => setActive(s), []);
+
+  const nodes: Node[] = useMemo(() => CANVAS_NODES.map((n) => ({
+    ...n,
+    data: { ...n.data, runStatus: nodeRunStatus(n.id, active.progress, active.status) },
+  })) as unknown as Node[], [active]);
+
   return (
     <main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <RunBar channelId="eason" />
+      <RunBar channelId="eason" onActive={onActive} />
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <div style={{ flex: 1 }}>
           <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes}
