@@ -149,3 +149,35 @@ All test mutations were reverted via `git checkout --`; the working tree is clea
 ## Canvas v1 verdict
 
 The editable-canvas **data/API layer is fully proven end-to-end**: channels CRUD (incl. the user's core "add a YouTuber" path), pipeline-field edits, prompt edits, zod/whitelist rejection of bad input with no file mutation, and live path-traversal blocking — all against a running server, all reverted clean. Build + types + 80 tests green. The remaining unverified surface is purely **visual interaction**, which needs a human in a browser (instructions above). Reported without varnish.
+
+---
+
+# Canvas live progress (v1.1) — 2026-05-19 (per-stage node colouring)
+
+**Built across commits** 57d07f0 (runner emits progress) → ada1e30 (pure `nodeRunStatus`) → ef220ad (canvas live colouring). Plan: `2026-05-19-canvas-live-progress.md`. Driven by user feedback: "after Run there's no clear UI showing which step is running/done/errored." User chose the coarse-but-honest option (4 observable stages live; channels static, persistence derived).
+
+## Deterministic evidence (Vitest, runPipeline)
+
+- Fake-success run → `progress = {digest:"skipped", analysis:"done", postprocess:"done", quality:"done"}` (exact `toEqual`).
+- Digest-failure run → `progress.digest:"error"`, `progress.analysis:"pending"`.
+- Full suite **86 tests green**, tsc clean, `next build` succeeds (7 routes). The runPipeline change was verified **additive-only** (existing flow/args/behaviour byte-identical; only `setProgress` writes added).
+
+## Live evidence — real run via `/api/runs`, fresh build (BUILD_ID 20:05), polled every 8 s
+
+```
+20:05:32 … 20:07:01  status=running  progress={digest:running, analysis:pending, postprocess:pending, quality:pending}
+20:07:09             status=running  progress={digest:DONE,   analysis:RUNNING, postprocess:pending, quality:pending}
+20:07:17 … 20:07:49  status=running  progress={digest:done,   analysis:running, postprocess:pending, quality:pending}
+```
+
+The `digest:running → digest:done + analysis:running` handoff at 20:07:09 is the decisive observation: the runner writes per-stage progress into `run.json` and `/api/runs/[id]` surfaces it live — exactly the signal `nodeRunStatus` maps onto node colours. Polling stopped (loop cap) while analysis was still running; capturing the transition is sufficient — completion adds nothing.
+
+## Honest caveats (NOT glossed)
+
+1. **Visual node colouring still needs a human eyeball.** Proven: the runner emits progress, the API surfaces it live, and the pure `nodeRunStatus` mapping is unit-tested (channels→null, persistence→derived, 4 stages→progress). NOT auto-verified by me: that the ReactFlow nodes actually render the colours/dots in a browser. Verify: `cd studio && npx next start -p 3100`, open http://localhost:3100, press Run, watch 摘要/分析/後處理/品質 light up.
+2. **This run was triggered via the `/api/runs` route, which by long-standing design does NOT wire `mcpConfigPath`/`allowedTools`** — so its analysis quality is degenerate (no MCP data tools). That is irrelevant to the progress feature (the runner still walks all stages) and is a separate pre-existing gap; real quality confirming runs use the ad-hoc launcher (see FU-1…FU-6). Flagged so this is not mistaken for a quality run.
+3. **Process gotcha (fixed):** the first acceptance attempt hit `EADDRINUSE` on :3100 — a stale leftover `next start` from the canvas-v1 acceptance, built *before* the live-progress code, was still bound; the curl hit that old binary and returned `progress:null`. Corrected by killing all port-3100 servers + a fresh `next build` before retrying. Future canvas acceptance must free :3100 and rebuild first. The null was a stale-server artefact, not a code defect — re-test on the fresh build showed correct live transitions above.
+
+## v1.1 verdict
+
+Per-stage live progress **works and is proven** at the runner + API + pure-mapping layers, with a real run showing the live `digest→analysis` handoff. The honest limitation the user accepted (channels static, persistence derived — runner can't observe persistence inside a single claude turn) is encoded in `nodeRunStatus` and stated plainly. Only the in-browser visual rendering remains for a human to eyeball. Not faked.
