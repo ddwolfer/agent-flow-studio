@@ -34,4 +34,26 @@ describe("buildPrompt", () => {
     expect(out).toContain("css:BODY{color:red}");
     expect(out).not.toContain("${"); expect(out).not.toContain("{{report_css}}");
   });
+
+  it("substitutes ${TRANSCRIPT_DIGEST} with the digest path", () => {
+    const out = buildPrompt({
+      promptTemplate: "read ${TRANSCRIPT_DIGEST} now",
+      references: [], channel: {
+        id: "eason", handle: "@x", name: "X", search_query: "q",
+        pipeline: "eason", enabled: true,
+      },
+      calendarText: "CAL", transcriptDigestPath: "/runs/abc/transcript-digest.md",
+    });
+    expect(out).toContain("read /runs/abc/transcript-digest.md now");
+  });
+
+  it("substitutes ${TRANSCRIPT_DIGEST} with empty string when absent", () => {
+    const out = buildPrompt({
+      promptTemplate: "x${TRANSCRIPT_DIGEST}y", references: [],
+      channel: { id: "eason", handle: "@x", name: "X", search_query: "q",
+        pipeline: "eason", enabled: true },
+      calendarText: "CAL",
+    });
+    expect(out).toContain("xy");
+  });
 });

@@ -12,6 +12,7 @@ export interface LoadedConfig {
   picksPrompt: string;
   judgeRubric: string;
   qualitySections: string[];
+  digestPrompt?: string;
 }
 
 async function readText(p: string): Promise<string> {
@@ -50,5 +51,8 @@ export async function loadConfig(channelId: string, studioRoot: string): Promise
   const judgeRubric = await readText(join(studioRoot, pipeline.quality_judge.rubric));
 
   const qualitySections = pipeline.quality_sections ?? [];
-  return { channel, pipeline, promptTemplate, references, picksPrompt, judgeRubric, qualitySections };
+  const digestPrompt = pipeline.digest
+    ? await readText(join(studioRoot, pipeline.digest.prompt))
+    : undefined;
+  return { channel, pipeline, promptTemplate, references, picksPrompt, judgeRubric, qualitySections, digestPrompt };
 }

@@ -9,6 +9,7 @@ export interface BuildPromptArgs {
   logPath?: string;
   dateIso?: string;
   reportCss?: string;
+  transcriptDigestPath?: string;
 }
 
 export function buildPrompt(a: BuildPromptArgs): string {
@@ -20,7 +21,8 @@ export function buildPrompt(a: BuildPromptArgs): string {
     .replaceAll("{{report_css}}", a.reportCss ?? "")
     .replaceAll("${HTML_FILE}", a.htmlPath ?? "")
     .replaceAll("${DATE}", a.dateIso ?? "")
-    .replaceAll("${LOG_FILE}", a.logPath ?? "");
+    .replaceAll("${LOG_FILE}", a.logPath ?? "")
+    .replaceAll("${TRANSCRIPT_DIGEST}", a.transcriptDigestPath ?? "");
   if (a.references.length > 0)
     body += "\n\n---\n# Reference material (authoritative)\n\n" +
       a.references.join("\n\n---\n\n");

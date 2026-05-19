@@ -23,6 +23,10 @@ export const PipelineFile = z.object({
     notify: z.boolean(),
     picks: z.object({ model: z.string().min(1), prompt: z.string().min(1) }),
   }),
+  digest: z.object({
+    model: z.string().min(1),
+    prompt: z.string().min(1),
+  }).optional(),
   quality_judge: z.object({ model: z.string().min(1), rubric: z.string().min(1) }),
   quality_sections: z.array(z.string()).optional(),
 });

@@ -14,6 +14,9 @@ post:
   picks:
     model: claude-haiku-4-5
     prompt: prompts/eason/picks.md
+digest:
+  model: claude-sonnet-4-6
+  prompt: prompts/eason/digest.md
 quality_judge:
   model: claude-sonnet-4-6
   rubric: prompts/eason/judge-rubric.md
