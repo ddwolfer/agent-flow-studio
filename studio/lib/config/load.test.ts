@@ -43,7 +43,12 @@ describe("loadConfig", () => {
     await expect(loadConfig("nope", ROOT)).rejects.toBeInstanceOf(ConfigError);
   });
   it("throws ConfigError for a disabled channel", async () => {
-    await expect(loadConfig("yutinghao", ROOT)).rejects.toThrow(/disabled/);
+    // yutinghao is now an enabled analyst, so use a dedicated tmp fixture.
+    const root = await mkdtemp(join(tmpdir(), "lc-dis-"));
+    await mkdir(join(root, "config"), { recursive: true });
+    await writeFile(join(root, "config/channels.yaml"),
+      "channels:\n  - id: off\n    handle: '@off'\n    name: Off\n    search_query: q\n    pipeline: eason\n    enabled: false\n");
+    await expect(loadConfig("off", root)).rejects.toThrow(/disabled/);
   });
   it("eason loadConfig surfaces qualitySections from eason.yaml", async () => {
     const c = await loadConfig("eason", ROOT);
@@ -62,6 +67,15 @@ describe("loadConfig", () => {
     expect(cfg.pipeline.digest?.model).toBe("claude-sonnet-4-6");
     expect(typeof cfg.digestPrompt).toBe("string");
     expect(cfg.digestPrompt!.length).toBeGreaterThan(0);
+  });
+  it("loads the real yutinghao pipeline (no picks, has digest, declares allowed_tools)", async () => {
+    const c = await loadConfig("yutinghao", ROOT);
+    expect(c.pipeline.name).toBe("yutinghao");
+    expect(c.pipeline.post.picks).toBeUndefined();
+    expect(c.picksPrompt).toBeUndefined();
+    expect(c.pipeline.allowed_tools.length).toBeGreaterThan(0);
+    expect(typeof c.digestPrompt).toBe("string");
+    expect(c.promptTemplate).toContain("游庭皓");
   });
 });
 

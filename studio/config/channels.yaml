@@ -9,5 +9,5 @@ channels:
     handle: "@yutinghaofinance"
     name: "游庭皓"
     search_query: "游庭皓 早晨財經速解讀"
-    pipeline: eason
-    enabled: false
+    pipeline: yutinghao
+    enabled: true
