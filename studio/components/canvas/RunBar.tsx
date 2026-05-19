@@ -23,11 +23,15 @@ export function RunBar({ channelId }: { channelId: string }) {
 
   const trigger = async () => {
     setBusy(true);
-    await fetch("/api/runs", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ channelId }),
-    });
-    setTimeout(() => { void load(); setBusy(false); }, 2000);
+    try {
+      await fetch("/api/runs", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channelId }),
+      });
+      setTimeout(() => { void load(); setBusy(false); }, 2000);
+    } catch {
+      setBusy(false);
+    }
   };
 
   const color = (s?: string, q?: boolean) =>

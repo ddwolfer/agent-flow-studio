@@ -36,7 +36,7 @@ export function PipelineEditor({ section }: { section: Section }) {
     <div style={{ marginTop: 12 }}>
       {section === "analysis" && <>
         {field("model", p.model ?? "", (v) => setP({ ...p, model: v }))}
-        {field("max_turns", String(p.max_turns ?? ""), (v) => setP({ ...p, max_turns: Number(v) || p.max_turns }))}
+        {field("max_turns", String(p.max_turns ?? ""), (v) => { const n = Number(v); if (!Number.isNaN(n)) setP({ ...p, max_turns: n }); })}
       </>}
       {section === "digest" && p.digest &&
         field("digest.model", p.digest.model ?? "", (v) => setP({ ...p, digest: { ...p.digest, model: v } }))}

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface Ch { id: string; handle: string; name: string; search_query: string; pipeline: string; enabled: boolean; }
 
@@ -7,10 +7,12 @@ export function ChannelsEditor() {
   const [chs, setChs] = useState<Ch[]>([]);
   const [msg, setMsg] = useState("載入中…");
 
-  const load = () => fetch("/api/channels").then((r) => r.json())
-    .then((j) => { setChs(j.channels ?? []); setMsg(""); })
-    .catch(() => setMsg("讀取失敗"));
-  useEffect(() => { void load(); }, []);
+  const load = useCallback(async () => {
+    fetch("/api/channels").then((r) => r.json())
+      .then((j) => { setChs(j.channels ?? []); setMsg(""); })
+      .catch(() => setMsg("讀取失敗"));
+  }, []);
+  useEffect(() => { void load(); }, [load]);
 
   const save = async () => {
     setMsg("儲存中…");
