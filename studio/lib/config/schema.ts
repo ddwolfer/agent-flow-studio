@@ -14,6 +14,7 @@ export const PipelineFile = z.object({
   name: z.string().min(1),
   model: z.string().min(1),
   max_turns: z.number().int().positive(),
+  allowed_tools: z.array(z.string().min(1)).min(1),
   prompt: z.object({
     template: z.string().min(1),
     references: z.array(z.string()).default([]),
@@ -21,13 +22,13 @@ export const PipelineFile = z.object({
   post: z.object({
     pdf: z.boolean(),
     notify: z.boolean(),
-    picks: z.object({ model: z.string().min(1), prompt: z.string().min(1) }),
+    picks: z.object({ model: z.string().min(1), prompt: z.string().min(1) }).optional(),
   }),
   digest: z.object({
     model: z.string().min(1),
     prompt: z.string().min(1),
   }).optional(),
-  quality_judge: z.object({ model: z.string().min(1), rubric: z.string().min(1) }),
+  quality_judge: z.object({ model: z.string().min(1), rubric: z.string().min(1) }).optional(),
   quality_sections: z.array(z.string()).optional(),
 });
 

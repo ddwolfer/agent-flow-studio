@@ -9,8 +9,8 @@ export interface LoadedConfig {
   pipeline: PipelineConfig;
   promptTemplate: string;
   references: string[];
-  picksPrompt: string;
-  judgeRubric: string;
+  picksPrompt?: string;
+  judgeRubric?: string;
   qualitySections: string[];
   digestPrompt?: string;
 }
@@ -47,8 +47,12 @@ export async function loadConfig(channelId: string, studioRoot: string): Promise
   const promptTemplate = await readText(join(studioRoot, pipeline.prompt.template));
   const references = await Promise.all(
     pipeline.prompt.references.map((r) => readText(join(studioRoot, r))));
-  const picksPrompt = await readText(join(studioRoot, pipeline.post.picks.prompt));
-  const judgeRubric = await readText(join(studioRoot, pipeline.quality_judge.rubric));
+  const picksPrompt = pipeline.post.picks
+    ? await readText(join(studioRoot, pipeline.post.picks.prompt))
+    : undefined;
+  const judgeRubric = pipeline.quality_judge
+    ? await readText(join(studioRoot, pipeline.quality_judge.rubric))
+    : undefined;
 
   const qualitySections = pipeline.quality_sections ?? [];
   const digestPrompt = pipeline.digest

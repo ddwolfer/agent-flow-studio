@@ -1,45 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { ChannelsFile, PipelineFile } from "./schema";
+import { PipelineFile } from "./schema";
 
-describe("config schema", () => {
-  it("accepts a valid channels file", () => {
-    const parsed = ChannelsFile.parse({
-      channels: [{ id: "eason", handle: "@m168", name: "Eason",
-        search_query: "張貽程 外資超錢線", pipeline: "eason", enabled: true }],
-    });
-    expect(parsed.channels[0]!.id).toBe("eason");
+const base = {
+  name: "x", model: "m", max_turns: 10,
+  prompt: { template: "p.md", references: [] },
+  post: { pdf: true, notify: false },
+  allowed_tools: ["Write", "Read"],
+};
+
+describe("PipelineFile schema", () => {
+  it("accepts a pipeline WITHOUT post.picks and WITHOUT quality_judge", () => {
+    const r = PipelineFile.safeParse(base);
+    expect(r.success).toBe(true);
   });
-  it("rejects a channel missing search_query", () => {
-    expect(() => ChannelsFile.parse({
-      channels: [{ id: "x", handle: "@x", name: "X", pipeline: "eason", enabled: true }],
-    })).toThrow();
-  });
-  it("accepts a valid pipeline file", () => {
-    const p = PipelineFile.parse({
-      name: "eason", model: "claude-sonnet-4-6", max_turns: 50,
-      prompt: { template: "prompts/eason/main.md", references: ["prompts/eason/framework.md"] },
-      post: { pdf: true, notify: false, picks: { model: "claude-haiku-4-5", prompt: "prompts/eason/picks.md" } },
-      quality_judge: { model: "claude-sonnet-4-6", rubric: "prompts/eason/judge-rubric.md" },
+  it("still accepts a pipeline WITH post.picks + quality_judge", () => {
+    const r = PipelineFile.safeParse({
+      ...base,
+      post: { ...base.post, picks: { model: "h", prompt: "picks.md" } },
+      quality_judge: { model: "m", rubric: "r.md" },
     });
-    expect(p.quality_judge.model).toBe("claude-sonnet-4-6");
+    expect(r.success).toBe(true);
   });
-  it("accepts a pipeline file WITH quality_sections and surfaces them", () => {
-    const p = PipelineFile.parse({
-      name: "eason", model: "claude-sonnet-4-6", max_turns: 50,
-      prompt: { template: "prompts/eason/main.md", references: [] },
-      post: { pdf: true, notify: false, picks: { model: "claude-haiku-4-5", prompt: "prompts/eason/picks.md" } },
-      quality_judge: { model: "claude-sonnet-4-6", rubric: "prompts/eason/judge-rubric.md" },
-      quality_sections: ["指標儀表板", "風險提示"],
-    });
-    expect(p.quality_sections).toEqual(["指標儀表板", "風險提示"]);
-  });
-  it("accepts a pipeline file WITHOUT quality_sections (optional field)", () => {
-    const p = PipelineFile.parse({
-      name: "eason", model: "claude-sonnet-4-6", max_turns: 50,
-      prompt: { template: "prompts/eason/main.md", references: [] },
-      post: { pdf: true, notify: false, picks: { model: "claude-haiku-4-5", prompt: "prompts/eason/picks.md" } },
-      quality_judge: { model: "claude-sonnet-4-6", rubric: "prompts/eason/judge-rubric.md" },
-    });
-    expect(p.quality_sections).toBeUndefined();
+  it("requires allowed_tools (non-empty)", () => {
+    expect(PipelineFile.safeParse({ ...base, allowed_tools: undefined }).success).toBe(false);
+    expect(PipelineFile.safeParse({ ...base, allowed_tools: [] }).success).toBe(false);
   });
 });

@@ -1,6 +1,22 @@
 name: eason
 model: claude-sonnet-4-6
 max_turns: 50
+allowed_tools:
+  - mcp__yt-dlp__ytdlp_search_videos
+  - mcp__yt-dlp__ytdlp_download_transcript
+  - mcp__yt-dlp__ytdlp_transcript_page
+  - mcp__twse__twse_fmtqik
+  - mcp__twse__twse_mi_index
+  - mcp__twse__twse_mi_margn
+  - mcp__twse__twse_stock_day_all
+  - mcp__twse__twse_mi_qfiis_cat
+  - mcp__yahoo-finance__yahoo_quote
+  - mcp__fred__fred_get_series
+  - mcp__sqlite__query
+  - mcp__sqlite__create_record
+  - mcp__sqlite__update_records
+  - Write
+  - Read
 prompt:
   template: prompts/eason/main.md
   references:

@@ -129,4 +129,18 @@ describe("loadConfig — YAML/schema error wrapping", () => {
     await expect(loadConfig("eason", tmpRoot)).rejects.toBeInstanceOf(ConfigError);
     await expect(loadConfig("eason", tmpRoot)).rejects.toThrow(/schema validation/);
   });
+  it("loadConfig handles a pipeline with no picks / no quality_judge (picksPrompt+judgeRubric undefined)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lc-"));
+    await mkdir(join(root, "config/pipelines"), { recursive: true });
+    await mkdir(join(root, "prompts/np"), { recursive: true });
+    await writeFile(join(root, "config/channels.yaml"),
+      "channels:\n  - id: np\n    handle: '@np'\n    name: NP\n    search_query: q\n    pipeline: np\n    enabled: true\n");
+    await writeFile(join(root, "config/pipelines/np.yaml"),
+      "name: np\nmodel: m\nmax_turns: 10\nallowed_tools: [Write, Read]\nprompt:\n  template: prompts/np/main.md\n  references: []\npost:\n  pdf: true\n  notify: false\n");
+    await writeFile(join(root, "prompts/np/main.md"), "hello");
+    const cfg = await loadConfig("np", root);
+    expect(cfg.picksPrompt).toBeUndefined();
+    expect(cfg.judgeRubric).toBeUndefined();
+    expect(cfg.pipeline.allowed_tools).toEqual(["Write", "Read"]);
+  });
 });
