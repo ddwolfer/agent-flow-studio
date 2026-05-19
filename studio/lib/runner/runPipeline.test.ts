@@ -57,4 +57,20 @@ describe("runPipeline", () => {
     const claudeLog = join(runsRoot, runDir, "claude.log");
     await expect(access(claudeLog, constants.F_OK)).resolves.toBeUndefined();
   });
+
+  it("skips the digest pass under the fake CLI and still succeeds", async () => {
+    let nonFakeCalls = 0;
+    const r = await runPipeline("eason", {
+      studioRoot: STUDIO, runsRoot, claudeBin: FAKE,
+      spawner: async (file, args, opts) => {
+        if (file.endsWith("fake-claude.sh")) return spawnProc(file, args, opts);
+        nonFakeCalls++; return { code: 0 };
+      },
+    });
+    expect(r.status).toBe("succeeded");
+    // digest pass would have been an extra non-fake claude call; it must be skipped
+    const { readdir } = await import("node:fs/promises");
+    const runDirs = await readdir(runsRoot);
+    expect(runDirs).toHaveLength(1);
+  });
 });

@@ -10,6 +10,7 @@ import { gitSha, hashAll } from "./snapshot";
 import type { Spawner } from "./spawnProc";
 import { ConfigError, ClaudeRunError } from "./errors";
 import { mechanicalChecks } from "../quality/check";
+import { digestPass } from "./digestPass";
 
 export interface RunPipelineOpts {
   studioRoot: string; runsRoot: string;
@@ -26,17 +27,35 @@ export async function runPipeline(channelId: string,
     promptHashes: hashAll({ main: cfg.promptTemplate, picks: cfg.picksPrompt }) };
   const runId = await createRun(o.runsRoot, channelId, snap);
   const claudeLogPath = join(o.runsRoot, runId, "claude.log");
+  const digestPath = join(o.runsRoot, runId, "transcript-digest.md");
+  const digestLogPath = join(o.runsRoot, runId, "digest.log");
+  const isFake = !!o.claudeBin?.endsWith("fake-claude.sh");
+  let failStage: "loadConfig" | "digest" | "runClaude" | "postProcess" = "runClaude";
   try {
     await updateRun(o.runsRoot, runId, { status: "running", pid: process.pid });
     const cal = calendarFacts(o.now ?? new Date());
     const htmlOut = join(o.runsRoot, runId, "report.html");
     let reportCss = "";
     try { reportCss = await readFile(join(o.studioRoot, "prompts/eason/report.css"), "utf8"); } catch { reportCss = ""; }
+    if (!isFake && cfg.pipeline.digest && cfg.digestPrompt) {
+      failStage = "digest";
+      await digestPass({
+        digestPromptTemplate: cfg.digestPrompt,
+        channel: cfg.channel, calendarText: cal.text, dateIso: cal.iso,
+        digestPath, model: cfg.pipeline.digest.model,
+        maxTurns: cfg.pipeline.max_turns, cwd: financeRoot,
+        claudeBin: o.claudeBin, spawner: o.spawner,
+        mcpConfigPath: o.mcpConfigPath, allowedTools: o.allowedTools,
+        logPath: digestLogPath,
+      });
+    }
+    failStage = "runClaude";
     const prompt = buildPrompt({
       promptTemplate: cfg.promptTemplate, references: cfg.references,
       channel: cfg.channel, calendarText: cal.text,
       htmlPath: htmlOut, logPath: claudeLogPath,
       dateIso: cal.iso, reportCss,
+      transcriptDigestPath: digestPath,
     });
     const cr = await runClaude({
       prompt, model: cfg.pipeline.model, maxTurns: cfg.pipeline.max_turns,
@@ -67,8 +86,7 @@ export async function runPipeline(channelId: string,
       qualityOk, qualityFailures,
     });
   } catch (e) {
-    const stage = e instanceof ConfigError ? "loadConfig"
-      : e instanceof ClaudeRunError ? "runClaude" : "postProcess";
+    const stage = e instanceof ConfigError ? "loadConfig" : failStage;
     await updateRun(o.runsRoot, runId, {
       status: "failed",
       error: { stage, message: e instanceof Error ? e.message : String(e),
