@@ -95,3 +95,27 @@ Minor: the digest H1 shows the raw calendar instruction string (`{{calendar}}` s
 
 ## FU-5 verdict
 The FU-5 design goal — **get the transcript's substance into the analysis via a paged full-transcript read + a small faithful digest, without the FU-4 oversized-tool-result ceiling — is unambiguously achieved** (confidence 4.5→7.5, verbatim quotes + 5-layer chain + real picks now in the report; digest is 5.7 KB and faithful). Two genuine downstream gaps remain — `eason_picks` DB persistence and the `報告總結` section — both are separate prompt-level issues, not transcript-delivery problems, and are the natural next slice (FU-6). Reported honestly; not glossed.
+
+---
+
+# FU-6 confirming run — 2026-05-19 (fix eason_picks substitution + mandate 報告總結)
+
+**runId:** `2026-05-19T09-28-14-523Z_eason` · gitSha `11ea702` · status **succeeded** · ~14 min (09:28:14→09:42:22) · report.html 22,346 B + report.pdf 1.5 MB (`pdfOk:true`).
+
+## Both FU-5 residual gaps — FIXED ✅
+
+| signal | FU-5 run | **FU-6 run** |
+|---|---|---|
+| `eason_picks` rows | **0** | **1** (real row: `2026-05-19 ｜ 2408 ｜ 南亞科 ｜ 記憶體 ｜ 新推 ｜ source 'Eason daily 2026-05-19'`) |
+| `qualityOk` | `false` | **`true`** |
+| `qualityFailures` | `["missing section: 報告總結"]` | **`[]`** |
+| `報告總結` in report.html | NO | **YES** |
+
+- **Bug 1 (eason_picks=0) — root cause fixed & proven.** It was `runPipeline.ts` passing `cfg.picksPrompt` raw to `postProcess` (so picks.md's `${HTML_FILE}`/`${LOG_FILE}`/`${DATE}` reached claude unresolved). Routing the picks prompt through `buildPrompt` substitution (commit `2172bc9`) made the picks `claude -p` call able to read the report; it wrote a correctly-formed `eason_picks` row (schema fields all sane). 0→1 across an identical-video run = the write path is now real.
+- **Bug 2 (報告總結 missing) — fixed.** Mandating the section in `main.md` (commit `11ea702`) made the model emit a real `報告總結` section into the HTML; all 5 `quality_sections` now pass, `qualityOk:true`.
+
+## Honest caveat (not a defect, flagged for the user)
+The digest listed ~9 candidate stocks but only **1** `eason_picks` row was written. This is **by design**, not a regression: `picks.md` enforces a strict "寧可漏也不要亂寫" policy — it writes only *new explicit entry recommendations* (`新推`) or *clear watch/anti-fall* calls, excluding general sector mentions, already-held positions, and undirected name-drops. Of the digest's picks, only 南亞科 qualified as `新推`. The persistence **mechanism** is now proven working; whether picks.md's conservatism should be loosened is a separate tuning judgment for the user, not a bug.
+
+## FU-6 verdict
+Both FU-5 residual gaps are closed with evidence: `eason_picks` 0→1 (real, schema-correct row) and `qualityOk` false→true with `報告總結` present. FU-5 gains held (digest 6.2 KB produced, transcript-driven analysis intact). The eason pipeline now end-to-end produces: faithful digest → rich quote-based report with all required sections → PDF → DB persistence across `eason_training`/`eason_daily`/`eason_picks`. Conservative pick count noted honestly as a policy choice, not glossed.
