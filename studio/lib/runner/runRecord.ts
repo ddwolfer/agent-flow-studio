@@ -19,6 +19,12 @@ export interface RunRecord {
   error?: { stage: string; message: string; claudeLogPath?: string };
 }
 
+/** True iff `name` is a run directory name (ISO-ish timestamp + "_" + channelId).
+ *  Filters out stray files in RUNS_ROOT (logs, .DS_Store, artefacts). */
+export function isRunId(name: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T[\dZ-]+_[a-z0-9-]+$/i.test(name);
+}
+
 const file = (root: string, id: string) => join(root, id, "run.json");
 
 export async function createRun(root: string, channelId: string,

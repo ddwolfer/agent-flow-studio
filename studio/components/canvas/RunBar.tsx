@@ -19,7 +19,7 @@ export function RunBar({ channelId, onActive }:
       } catch { return { id } as RunStatus; }
     }));
     setRuns(detailed);
-    const newest = detailed[0];
+    const newest = detailed.find((d) => d.status) ?? detailed[0];
     if (newest && onActive) onActive({ status: newest.status, progress: newest.progress });
     return newest;
   }, [onActive]);
