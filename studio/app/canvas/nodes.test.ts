@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CANVAS_NODES, CANVAS_EDGES, editorFor } from "./nodes";
+import { nodeRunStatus } from "./nodes";
 
 describe("canvas nodes model", () => {
   it("has exactly the 6 fixed stage nodes with unique ids", () => {
@@ -30,5 +31,27 @@ describe("canvas nodes model", () => {
     expect(editorFor("quality")).toBe("pipeline-quality");
     expect(editorFor("persistence")).toBe("persistence");
     expect(editorFor("nope")).toBeNull();
+  });
+});
+
+describe("nodeRunStatus", () => {
+  const prog = { digest: "done", analysis: "running", postprocess: "pending", quality: "pending" } as const;
+
+  it("returns the progress state for the 4 observable stages", () => {
+    expect(nodeRunStatus("digest", prog, "running")).toBe("done");
+    expect(nodeRunStatus("analysis", prog, "running")).toBe("running");
+    expect(nodeRunStatus("postprocess", prog, "running")).toBe("pending");
+    expect(nodeRunStatus("quality", prog, "running")).toBe("pending");
+  });
+  it("channels is always neutral (null)", () => {
+    expect(nodeRunStatus("channels", prog, "running")).toBeNull();
+  });
+  it("persistence is done only when the run succeeded, else pending", () => {
+    expect(nodeRunStatus("persistence", prog, "succeeded")).toBe("done");
+    expect(nodeRunStatus("persistence", prog, "running")).toBe("pending");
+    expect(nodeRunStatus("persistence", prog, "failed")).toBe("pending");
+  });
+  it("returns null when there is no progress (no active run)", () => {
+    expect(nodeRunStatus("analysis", undefined, undefined)).toBeNull();
   });
 });

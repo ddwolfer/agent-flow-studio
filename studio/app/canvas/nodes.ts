@@ -46,3 +46,26 @@ const EDITORS: Record<string, EditorKind> = {
 export function editorFor(nodeId: string): EditorKind | null {
   return EDITORS[nodeId] ?? null;
 }
+
+export type StepState = "pending" | "running" | "done" | "error" | "skipped";
+export interface RunProgress {
+  digest: StepState; analysis: StepState; postprocess: StepState; quality: StepState;
+}
+
+/** Per-node status for canvas colouring. `null` = no run-status accent (neutral).
+ *  channels is config (always null); persistence is derived (runner can't observe
+ *  it mid-turn) — done only when the whole run succeeded. */
+export function nodeRunStatus(
+  nodeId: string,
+  progress: RunProgress | undefined,
+  runStatus: string | undefined,
+): StepState | null {
+  if (nodeId === "channels") return null;
+  if (nodeId === "persistence") return runStatus === "succeeded" ? "done" : "pending";
+  if (!progress) return null;
+  if (nodeId === "digest" || nodeId === "analysis"
+      || nodeId === "postprocess" || nodeId === "quality") {
+    return progress[nodeId];
+  }
+  return null;
+}
