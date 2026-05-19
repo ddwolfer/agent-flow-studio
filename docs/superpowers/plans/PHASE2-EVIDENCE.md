@@ -70,3 +70,28 @@ The cleaned transcript was 59,128 chars — OVER `STUDIO_TRANSCRIPT_MAX_CHARS` (
 
 ## Honest conclusion
 Option (b) as implemented (return big cleaned text inline) **hit a real ceiling**: MCP tool-result size + the model's unwillingness to analyse a `truncated` blob. Persistence/data/quality-gate/logging are all solid; the remaining gap is purely "deliver the transcript's *substance* in a form small + faithful enough to actually be used". This needs a strategy change (a condense/digest step, i.e. closer to option (c)), not another tweak of the same approach. Surfaced to user for the decision; not faked.
+
+---
+
+# FU-5 confirming run — 2026-05-19 (option C: two-pass Sonnet digest)
+
+**runId:** `2026-05-19T09-01-25-989Z_eason` · gitSha `dafeab3` · status **succeeded** · ~15 min (09:01:25→09:16:24) · report.html 26,908 B + report.pdf (`pdfOk:true`).
+
+## THE core question — does the transcript substance now reach the analysis? YES ✅
+This is the exact thing FU-4 failed at. FU-5 fixed it.
+
+- **Digest pass worked end-to-end.** `digest.log`: *"逐字稿來源：captions，12,171 字元，4頁全部讀完"* — the new `ytdlp_transcript_page` tool paged the **full** transcript (4 pages) into a dedicated Sonnet pass which wrote `transcript-digest.md` (**5,722 B** — small enough for one `Read`).
+- **The digest is substantive and faithful.** Real 選股清單 with codes (台積電2330/聯發科2454/華新科1614/南亞科2408/群創3481/華邦電2344 + 奎美/金豪客), a real 5-layer logic chain with concrete numbers (外資淨空單 -5,967 口, CAPE 42.18, 殖利率破5%), risks, and 10 verbatim quotes. Faithfulness signal good: it flagged `黃光電（字幕辨識，待核實）` instead of asserting it, and honestly noted *no new video today → used 2026-05-18's*.
+- **Confidence trajectory (the headline):** title-only FU-3 = **4.5/10** → FU-4 data-only = **6.0/10** → **FU-5 = 7.5/10**, stance 看多(+4), 語氣 8/10. The lift is now explicitly *from the transcript*, not data alone.
+- **Report sections restored.** report.html now contains 指標儀表板 ✓ 邏輯鏈 ✓ **今日語錄 ✓** 風險提示 ✓ 選股 ✓ — the quote-dependent sections that were **missing in FU-4** are back.
+
+## Honest residual gaps (NOT papered over) ⚠️
+FU-5's stated goal is achieved, but two **separate, downstream** issues remain — neither is a transcript-delivery failure:
+
+1. **`eason_picks` still 0.** The picks genuinely exist now (9 in the digest, a 選股 section in the report), but the DB table is still empty. The model's own end summary lists only `eason_daily` (inserted_id=2, 2026-05-19 BULLISH) and `eason_training` (dup-skipped) — it **never attempted an `eason_picks` write**. This is a persistence-prompt gap (the picks-persistence path), independent of FU-5's transcript fix. FU-2 fixed training/daily; picks-row persistence was never actually exercised before because picks never existed — now they do, and the write path is shown to be missing.
+2. **`報告總結` section missing → `qualityOk:false`.** `qualityFailures: ["missing section: 報告總結"]`. The other 4 quality sections pass; the model produced a summary table in its *chat* output but did not emit a 報告總結 section in the HTML. FU-1 gate correctly flags it.
+
+Minor: the digest H1 shows the raw calendar instruction string (`{{calendar}}` substituted with the full "Today is …, do not infer the weekday" facts text) — cosmetic, no analysis impact.
+
+## FU-5 verdict
+The FU-5 design goal — **get the transcript's substance into the analysis via a paged full-transcript read + a small faithful digest, without the FU-4 oversized-tool-result ceiling — is unambiguously achieved** (confidence 4.5→7.5, verbatim quotes + 5-layer chain + real picks now in the report; digest is 5.7 KB and faithful). Two genuine downstream gaps remain — `eason_picks` DB persistence and the `報告總結` section — both are separate prompt-level issues, not transcript-delivery problems, and are the natural next slice (FU-6). Reported honestly; not glossed.
