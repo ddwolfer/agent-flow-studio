@@ -85,4 +85,24 @@ describe("runPipeline", () => {
     expect(r.status).toBe("failed");
     expect(r.error?.stage).toBe("digest");
   });
+
+  it("substitutes the picks prompt so the picks claude call gets the real report path, not ${HTML_FILE}", async () => {
+    let picksPromptArg: string | undefined;
+    await runPipeline("eason", {
+      studioRoot: STUDIO, runsRoot, claudeBin: FAKE,
+      spawner: async (file, args, opts) => {
+        if (file.endsWith("fake-claude.sh")) return spawnProc(file, args, opts);
+        if (file === "claude") {
+          const i = args.indexOf("-p");
+          if (i >= 0) picksPromptArg = args[i + 1];
+        }
+        return { code: 0 };
+      },
+    });
+    expect(picksPromptArg).toBeDefined();
+    expect(picksPromptArg).toContain("report.html");
+    expect(picksPromptArg).not.toContain("${HTML_FILE}");
+    expect(picksPromptArg).not.toContain("${LOG_FILE}");
+    expect(picksPromptArg).not.toContain("${DATE}");
+  });
 });

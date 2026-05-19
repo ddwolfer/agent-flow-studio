@@ -67,10 +67,15 @@ export async function runPipeline(channelId: string,
       logPath: claudeLogPath,
     });
     failStage = "postProcess";
+    const picksPrompt = buildPrompt({
+      promptTemplate: cfg.picksPrompt, references: [],
+      channel: cfg.channel, calendarText: cal.text,
+      htmlPath: cr.htmlPath, logPath: claudeLogPath, dateIso: cal.iso,
+    });
     const pp = await postProcess({
       htmlPath: cr.htmlPath, financeRoot,
       post: { ...cfg.pipeline.post, notify: o.notify ?? cfg.pipeline.post.notify },
-      runPicks: true, picksPrompt: cfg.picksPrompt, spawner: o.spawner,
+      runPicks: true, picksPrompt, spawner: o.spawner,
       mcpConfigPath: o.mcpConfigPath,
       allowedTools: o.allowedTools,
     });
