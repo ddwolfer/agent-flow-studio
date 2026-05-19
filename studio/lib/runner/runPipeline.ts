@@ -8,7 +8,7 @@ import { postProcess } from "./postProcess";
 import { createRun, updateRun, readRun, type RunRecord } from "./runRecord";
 import { gitSha, hashAll } from "./snapshot";
 import type { Spawner } from "./spawnProc";
-import { ConfigError, ClaudeRunError } from "./errors";
+import { ConfigError } from "./errors";
 import { mechanicalChecks } from "../quality/check";
 import { digestPass } from "./digestPass";
 
