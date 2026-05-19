@@ -187,6 +187,7 @@ def test_transcript_page_math_and_slicing():
 
 def test_transcript_page_caches_after_first_fetch():
     m = _load()
+    original_fetch = m._fetch_captions
     calls = {"n": 0}
     def fake_fetch(*a, **kw):
         calls["n"] += 1
@@ -198,10 +199,12 @@ def test_transcript_page_caches_after_first_fetch():
         m.ytdlp_transcript_page("https://youtu.be/c1", page=1, page_size=10)
         assert calls["n"] == 1                 # fetched once, paged from cache
     finally:
+        m._fetch_captions = original_fetch
         m._TRANSCRIPT_CACHE.clear()
 
 def test_transcript_page_none_source_shape():
     m = _load()
+    original_fetch = m._fetch_captions
     m._fetch_captions = lambda *a, **kw: None
     g = m._gemma; m._gemma = None
     m._TRANSCRIPT_CACHE.clear()
@@ -212,5 +215,20 @@ def test_transcript_page_none_source_shape():
         assert r["full_chars"] == 0
         assert r["total_pages"] == 0
     finally:
+        m._fetch_captions = original_fetch
         m._gemma = g
+        m._TRANSCRIPT_CACHE.clear()
+
+def test_transcript_page_negative_page_returns_empty():
+    """A negative page index must return text='' (out-of-range contract)."""
+    m = _load()
+    original_fetch = m._fetch_captions
+    m._fetch_captions = lambda *a, **kw: "X" * 100
+    m._TRANSCRIPT_CACHE.clear()
+    try:
+        r = m.ytdlp_transcript_page("https://youtu.be/neg1", page=-1, page_size=50)
+        assert r["text"] == "", f"expected '' for page=-1, got {r['text']!r}"
+        assert r["total_pages"] == 2            # ceil(100/50)
+    finally:
+        m._fetch_captions = original_fetch
         m._TRANSCRIPT_CACHE.clear()

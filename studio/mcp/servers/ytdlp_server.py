@@ -148,6 +148,7 @@ def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
                 result = {"source": "gemma4:e4b", "text": _clean_transcript(t)}
     except Exception as e:
         result = {"source": "none", "text": "", "error": f"transcript failed: {e}"}
+    # Cache key is video_url only; assumes a consistent language per URL within a session.
     _TRANSCRIPT_CACHE[video_url] = result
     return result
 
@@ -215,7 +216,7 @@ def ytdlp_transcript_page(video_url: str, page: int = 0,
     full = len(text)
     size = max(int(page_size), 1)
     total = (full + size - 1) // size if full else 0
-    start = max(int(page), 0) * size
+    start = int(page) * size
     slice_ = text[start:start + size] if 0 <= start < full else ""
     out = {"source": info.get("source", "none"), "page": int(page),
            "total_pages": total, "full_chars": full, "text": slice_}
