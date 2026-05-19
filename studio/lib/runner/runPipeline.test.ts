@@ -105,4 +105,29 @@ describe("runPipeline", () => {
     expect(picksPromptArg).not.toContain("${LOG_FILE}");
     expect(picksPromptArg).not.toContain("${DATE}");
   });
+
+  it("records per-stage progress for a fake success run", async () => {
+    const r = await runPipeline("eason", {
+      studioRoot: STUDIO, runsRoot, claudeBin: FAKE,
+      spawner: async (file, args, opts) =>
+        file.endsWith("fake-claude.sh") ? spawnProc(file, args, opts) : { code: 0 },
+    });
+    expect(r.status).toBe("succeeded");
+    expect(r.progress).toEqual({
+      digest: "skipped",
+      analysis: "done",
+      postprocess: "done",
+      quality: "done",
+    });
+  });
+
+  it("marks the failed stage as error in progress when the digest pass fails", async () => {
+    const r = await runPipeline("eason", {
+      studioRoot: STUDIO, runsRoot, claudeBin: "claude", // not fake → digest runs
+      spawner: async () => ({ code: 0 }),                 // writes no digest file
+    });
+    expect(r.status).toBe("failed");
+    expect(r.progress?.digest).toBe("error");
+    expect(r.progress?.analysis).toBe("pending");
+  });
 });

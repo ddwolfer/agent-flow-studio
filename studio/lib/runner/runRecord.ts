@@ -2,6 +2,10 @@ import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 export type RunStatus = "pending" | "running" | "succeeded" | "failed";
+export type StepState = "pending" | "running" | "done" | "error" | "skipped";
+export interface RunProgress {
+  digest: StepState; analysis: StepState; postprocess: StepState; quality: StepState;
+}
 export interface RunRecord {
   runId: string; channelId: string; status: RunStatus;
   startedAt: string; finishedAt?: string; exitCode?: number;
@@ -9,6 +13,7 @@ export interface RunRecord {
   reportOk?: boolean; pdfOk?: boolean; notifyOk?: boolean; notifySent?: boolean;
   qualityOk?: boolean;
   qualityFailures?: string[];
+  progress?: RunProgress;
   pid?: number;
   configSnapshot: { gitSha: string; promptHashes: Record<string, string> };
   error?: { stage: string; message: string; claudeLogPath?: string };
