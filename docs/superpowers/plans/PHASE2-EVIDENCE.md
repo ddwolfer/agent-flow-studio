@@ -119,3 +119,33 @@ The digest listed ~9 candidate stocks but only **1** `eason_picks` row was writt
 
 ## FU-6 verdict
 Both FU-5 residual gaps are closed with evidence: `eason_picks` 0→1 (real, schema-correct row) and `qualityOk` false→true with `報告總結` present. FU-5 gains held (digest 6.2 KB produced, transcript-driven analysis intact). The eason pipeline now end-to-end produces: faithful digest → rich quote-based report with all required sections → PDF → DB persistence across `eason_training`/`eason_daily`/`eason_picks`. Conservative pick count noted honestly as a policy choice, not glossed.
+
+---
+
+# Canvas v1 acceptance — 2026-05-19 (ReactFlow editable canvas, Route A second half)
+
+**Built across commits** ce8e32c → 144fb8e (+ paths fix 82dd914). 7 plan tasks + 1 inserted infra fix.
+Full automated suite at completion: **80 vitest tests (18 files) green**, `tsc --noEmit` clean, `npx next build` succeeds (all 7 routes incl `/`, `/api/prompts`, `/api/pipeline/[name]`).
+
+## End-to-end acceptance against a live `next start` server (port 3100)
+
+| spec §9 item | check | result |
+|---|---|---|
+| 1. canvas page renders | `GET /` returns SSR HTML bundling the app/xyflow chunks | ✅ HTML served |
+| 2. channel CRUD persists | `PUT /api/channels` adding a disabled `accept-test` channel | ✅ 200, `channels.yaml` gained the entry |
+| 3a. prompt edit persists | `PUT /api/prompts` appending a marker to `digest.md` | ✅ `{ok:true}`, marker on disk |
+| 3b. pipeline field persists | `PUT /api/pipeline/eason` `max_turns` 50→51 | ✅ 200, yaml updated |
+| 4. invalid input rejected, file untouched | `PUT /api/pipeline/eason` with `max_turns:"abc"` | ✅ 400, `eason.yaml` byte-identical (md5 unchanged) |
+| 4b. path-traversal blocked (live route) | `GET`/`PUT /api/prompts` with `../../etc/passwd` & non-whitelisted `secret.md` | ✅ both 400 |
+| reads | `GET /api/channels`, `/api/pipeline/eason`, `/api/prompts?path=…digest.md` | ✅ all correct payloads |
+
+All test mutations were reverted via `git checkout --`; the working tree is clean (verified).
+
+## Honest limitations (NOT glossed)
+
+- **Visual UI interaction is unverified by me.** I have no browser automation here. `next build` proves the React/ReactFlow tree compiles and the API layer is proven end-to-end above, but **clicking nodes, the ReactFlow canvas rendering, and the side-panel editors wiring visually** were not exercised in a real browser. This requires a human eyeball (`cd studio && npx next start -p 3100`, open http://localhost:3100, click the 6 nodes, edit+save in the side panel). Stated plainly per the spec's "UI correctness is manual" note.
+- **No fresh full pipeline run was launched for §9 item 5.** RunBar simply POSTs `/api/runs {channelId}` / polls `/api/runs[/id]` — the exact fire-and-forget contract already exhaustively proven in the FU-1…FU-6 confirming runs above. Launching another real ~15-min Claude pipeline execution purely for UI acceptance would be a wasteful duplicate; the run path is independently proven, and RunBar reuses it unchanged. The RunBar↔API contract is verified by reuse, not by burning a fresh run. Flagged honestly rather than faking a green.
+
+## Canvas v1 verdict
+
+The editable-canvas **data/API layer is fully proven end-to-end**: channels CRUD (incl. the user's core "add a YouTuber" path), pipeline-field edits, prompt edits, zod/whitelist rejection of bad input with no file mutation, and live path-traversal blocking — all against a running server, all reverted clean. Build + types + 80 tests green. The remaining unverified surface is purely **visual interaction**, which needs a human in a browser (instructions above). Reported without varnish.
