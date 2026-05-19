@@ -1,30 +1,39 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
+import {
+  ReactFlow, Background, Controls, type Node, type Edge,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { CANVAS_NODES, CANVAS_EDGES } from "./canvas/nodes";
+import { StageNode } from "@/components/canvas/StageNode";
+import { RunBar } from "@/components/canvas/RunBar";
+import { SidePanel } from "@/components/canvas/SidePanel";
 
-interface Ch { id: string; name: string; handle: string; enabled: boolean; }
+const nodeTypes = { stage: StageNode };
+const nodes: Node[] = CANVAS_NODES as unknown as Node[];
+const edges: Edge[] = CANVAS_EDGES.map((e) => ({ ...e, animated: true }));
 
 export default function Home() {
-  const [channels, setChannels] = useState<Ch[]>([]);
-  const [runs, setRuns] = useState<string[]>([]);
-  const load = async () => {
-    setChannels((await (await fetch("/api/channels")).json()).channels);
-    setRuns((await (await fetch("/api/runs")).json()).runs);
-  };
-  useEffect(() => { void load(); }, []);
-  const run = async (id: string) => {
-    await fetch("/api/runs", { method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ channelId: id }) });
-    setTimeout(() => void load(), 1500);
-  };
-  return (<main>
-    <h1>agent-flow-studio</h1>
-    <h2>Channels</h2>
-    <ul>{channels.map((c) => (<li key={c.id}>
-      {c.name} ({c.handle}) {c.enabled ? "" : "(disabled) "}
-      <button disabled={!c.enabled} onClick={() => void run(c.id)}>Run</button>
-    </li>))}</ul>
-    <h2>Runs</h2>
-    <ul>{runs.map((r) => (<li key={r}>{r}</li>))}</ul>
-  </main>);
+  const [selected, setSelected] = useState<string | null>(null);
+  const onNodeClick = useCallback((_: unknown, n: Node) => setSelected(n.id), []);
+  return (
+    <main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <RunBar channelId="eason" />
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <div style={{ flex: 1 }}>
+          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+            onNodeClick={onNodeClick} fitView proOptions={{ hideAttribution: true }}>
+            <Background />
+            <Controls />
+          </ReactFlow>
+        </div>
+        {selected && (
+          <div style={{ width: 380, borderLeft: "1px solid #30363d", overflow: "auto",
+            background: "#0d1117", color: "#e5e7eb" }}>
+            <SidePanel nodeId={selected} onClose={() => setSelected(null)} />
+          </div>
+        )}
+      </div>
+    </main>
+  );
 }
