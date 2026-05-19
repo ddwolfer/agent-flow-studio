@@ -53,6 +53,10 @@ describe("loadConfig", () => {
     expect(c.qualitySections).toContain("風險提示");
     expect(c.qualitySections).toContain("報告總結");
   });
+  it("eason main.md mandates a 報告總結 section in the HTML report", async () => {
+    const c = await loadConfig("eason", ROOT);
+    expect(c.promptTemplate).toContain("報告總結");
+  });
   it("loads digestPrompt text when pipeline.digest is configured", async () => {
     const cfg = await loadConfig("eason", ROOT);
     expect(cfg.pipeline.digest?.model).toBe("claude-sonnet-4-6");
