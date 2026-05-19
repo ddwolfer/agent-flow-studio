@@ -159,3 +159,58 @@ def test_ytdlp_download_transcript_exception_returns_structured_error():
         assert "network error" in result["error"]
     finally:
         m._fetch_captions = original_fetch
+
+# ── ytdlp_transcript_page paging tests ────────────────────────────────────────
+
+def test_transcript_page_math_and_slicing():
+    m = _load()
+    original_fetch = m._fetch_captions
+    # 5000 unique chars after cleaning (no VTT markup so cleaning is a no-op-ish)
+    m._fetch_captions = lambda *a, **kw: "X" * 5000
+    m._TRANSCRIPT_CACHE.clear()
+    try:
+        p0 = m.ytdlp_transcript_page("https://youtu.be/vid1", page=0, page_size=2000)
+        assert p0["source"] == "captions"
+        assert p0["full_chars"] == 5000
+        assert p0["total_pages"] == 3          # ceil(5000/2000)
+        assert p0["page"] == 0
+        assert len(p0["text"]) == 2000
+        p2 = m.ytdlp_transcript_page("https://youtu.be/vid1", page=2, page_size=2000)
+        assert len(p2["text"]) == 1000         # remainder
+        # out-of-range page → empty text, no crash
+        p9 = m.ytdlp_transcript_page("https://youtu.be/vid1", page=9, page_size=2000)
+        assert p9["text"] == ""
+        assert p9["total_pages"] == 3
+    finally:
+        m._fetch_captions = original_fetch
+        m._TRANSCRIPT_CACHE.clear()
+
+def test_transcript_page_caches_after_first_fetch():
+    m = _load()
+    calls = {"n": 0}
+    def fake_fetch(*a, **kw):
+        calls["n"] += 1
+        return "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n台股大漲\n"
+    m._fetch_captions = fake_fetch
+    m._TRANSCRIPT_CACHE.clear()
+    try:
+        m.ytdlp_transcript_page("https://youtu.be/c1", page=0, page_size=10)
+        m.ytdlp_transcript_page("https://youtu.be/c1", page=1, page_size=10)
+        assert calls["n"] == 1                 # fetched once, paged from cache
+    finally:
+        m._TRANSCRIPT_CACHE.clear()
+
+def test_transcript_page_none_source_shape():
+    m = _load()
+    m._fetch_captions = lambda *a, **kw: None
+    g = m._gemma; m._gemma = None
+    m._TRANSCRIPT_CACHE.clear()
+    try:
+        r = m.ytdlp_transcript_page("https://youtu.be/none1", page=0, page_size=100)
+        assert r["source"] == "none"
+        assert r["text"] == ""
+        assert r["full_chars"] == 0
+        assert r["total_pages"] == 0
+    finally:
+        m._gemma = g
+        m._TRANSCRIPT_CACHE.clear()

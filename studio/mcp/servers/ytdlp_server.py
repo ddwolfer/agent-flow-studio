@@ -12,6 +12,9 @@ _MAX_CHARS = int(os.environ.get("STUDIO_TRANSCRIPT_MAX_CHARS", "48000"))
 # head+tail split: keep 60 % head, 40 % tail (heuristic: Eason heavy picks toward end)
 _HEAD_RATIO = 0.60
 
+# video_url -> {"source": str, "text": str}  (full cleaned text, NOT truncated)
+_TRANSCRIPT_CACHE: dict[str, dict] = {}
+
 
 def _strip_vtt(raw: str) -> str:
     """Remove WEBVTT header, cue timestamps, <...> inline tags from a VTT/SRT blob."""
@@ -126,6 +129,29 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
     return None
 
 
+def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
+    """Fetch + clean the FULL transcript once per video_url (cached). No truncation.
+
+    Returns {"source": "captions"|"gemma4:e4b"|"none", "text": str}.
+    """
+    cached = _TRANSCRIPT_CACHE.get(video_url)
+    if cached is not None:
+        return cached
+    result = {"source": "none", "text": ""}
+    try:
+        raw = _fetch_captions(video_url, [language, "zh-TW", "zh-Hant", "zh", "en"])
+        if raw:
+            result = {"source": "captions", "text": _clean_transcript(raw)}
+        elif _gemma is not None:
+            t = _gemma.transcribe(video_url)
+            if t and t.strip():
+                result = {"source": "gemma4:e4b", "text": _clean_transcript(t)}
+    except Exception as e:
+        result = {"source": "none", "text": "", "error": f"transcript failed: {e}"}
+    _TRANSCRIPT_CACHE[video_url] = result
+    return result
+
+
 mcp = FastMCP("yt-dlp")
 
 @mcp.tool()
@@ -166,6 +192,37 @@ def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
         return {"source": "none", "text": "", "full_chars": 0, "truncated": False,
                 "error": f"transcript failed: {e}"}
     return {"source": "none", "text": "", "full_chars": 0, "truncated": False}
+
+@mcp.tool()
+def ytdlp_transcript_page(video_url: str, page: int = 0,
+                          page_size: int = 12000, language: str = "zh-Hant"):
+    """
+    Return ONE page of the FULL cleaned transcript (no head/tail elision).
+
+    The full transcript is fetched+cleaned once per video_url and cached, so
+    paging through it is cheap. Each page is small enough for a single MCP
+    tool result. Page through 0..total_pages-1 to read the entire transcript.
+
+    Result: {source, page, total_pages, full_chars, text}
+      - source: "captions" | "gemma4:e4b" | "none"
+      - total_pages: number of pages of size page_size (0 if no transcript)
+      - full_chars: length of the full cleaned transcript
+      - text: the requested page slice ("" if page is out of range)
+    Never raises; on failure returns source="none", text="", total_pages=0.
+    """
+    info = _get_full_transcript(video_url, language)
+    text = info.get("text") or ""
+    full = len(text)
+    size = max(int(page_size), 1)
+    total = (full + size - 1) // size if full else 0
+    start = max(int(page), 0) * size
+    slice_ = text[start:start + size] if 0 <= start < full else ""
+    out = {"source": info.get("source", "none"), "page": int(page),
+           "total_pages": total, "full_chars": full, "text": slice_}
+    if "error" in info:
+        out["error"] = info["error"]
+    return out
+
 
 if __name__ == "__main__":
     mcp.run()
