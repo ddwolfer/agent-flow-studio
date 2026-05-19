@@ -22,7 +22,10 @@ export async function runClaude(a: RunClaudeArgs): Promise<RunClaudeResult> {
         ...(a.allowedTools && a.allowedTools.length
           ? ["--allowedTools", a.allowedTools.join(",")] : []),
       ];
-  const { code } = await a.spawner(bin, args, { cwd: a.cwd, env: a.env, logPath: a.logPath });
+  const { code } = await a.spawner(bin, args, {
+    cwd: bin.endsWith("fake-claude.sh") ? undefined : a.cwd,
+    env: a.env, logPath: a.logPath,
+  });
   if (code !== 0) throw new ClaudeRunError(`claude exited ${code}`);
   return { exitCode: 0, htmlPath: a.htmlOut };
 }

@@ -24,7 +24,9 @@ export async function runPipeline(channelId: string,
   const cfg = await loadConfig(channelId, o.studioRoot); // config errors: no run dir
   const financeRoot = join(o.studioRoot, "../financial-report-system");
   const snap = { gitSha: gitSha(o.studioRoot),
-    promptHashes: hashAll({ main: cfg.promptTemplate, picks: cfg.picksPrompt }) };
+    promptHashes: hashAll(cfg.picksPrompt
+      ? { main: cfg.promptTemplate, picks: cfg.picksPrompt }
+      : { main: cfg.promptTemplate }) };
   const runId = await createRun(o.runsRoot, channelId, snap);
   const claudeLogPath = join(o.runsRoot, runId, "claude.log");
   const digestPath = join(o.runsRoot, runId, "transcript-digest.md");
@@ -81,15 +83,18 @@ export async function runPipeline(channelId: string,
     await setProgress({ analysis: "done" });
     failStage = "postProcess";
     await setProgress({ postprocess: "running" });
-    const picksPrompt = buildPrompt({
-      promptTemplate: cfg.picksPrompt, references: [],
-      channel: cfg.channel, calendarText: cal.text,
-      htmlPath: cr.htmlPath, logPath: claudeLogPath, dateIso: cal.iso,
-    });
+    const hasPicks = !!(cfg.pipeline.post.picks && cfg.picksPrompt);
+    const picksPrompt = hasPicks
+      ? buildPrompt({
+          promptTemplate: cfg.picksPrompt!, references: [],
+          channel: cfg.channel, calendarText: cal.text,
+          htmlPath: cr.htmlPath, logPath: claudeLogPath, dateIso: cal.iso,
+        })
+      : "";
     const pp = await postProcess({
       htmlPath: cr.htmlPath, financeRoot,
       post: { ...cfg.pipeline.post, notify: o.notify ?? cfg.pipeline.post.notify },
-      runPicks: true, picksPrompt, spawner: o.spawner,
+      runPicks: hasPicks, picksPrompt, spawner: o.spawner,
       mcpConfigPath: o.mcpConfigPath,
       allowedTools: o.allowedTools,
     });

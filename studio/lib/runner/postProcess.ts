@@ -37,7 +37,7 @@ export async function postProcess(a: PostProcessArgs): Promise<PostProcessResult
       [join(a.financeRoot, "scripts/notify.sh"), a.htmlPath]);
     res.notifyOk = code === 0;     // failure recorded, never thrown
   }
-  if (a.runPicks) {
+  if (a.runPicks && a.post.picks && a.picksPrompt) {
     const picksArgs = [
       "-p", a.picksPrompt,
       "--model", a.post.picks.model,

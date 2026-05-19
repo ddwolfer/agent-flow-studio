@@ -130,4 +130,31 @@ describe("runPipeline", () => {
     expect(r.progress?.digest).toBe("error");
     expect(r.progress?.analysis).toBe("pending");
   });
+
+  it("runs a no-picks pipeline (fake CLI): succeeds, issues no picks claude call, progress emitted", async () => {
+    const { mkdtemp, mkdir, writeFile, cp } = await import("node:fs/promises");
+    const sroot = await mkdtemp(join(tmpdir(), "nps-"));
+    await mkdir(join(sroot, "config/pipelines"), { recursive: true });
+    await cp(join(STUDIO, "prompts"), join(sroot, "prompts"), { recursive: true });
+    await writeFile(join(sroot, "config/channels.yaml"),
+      "channels:\n  - id: np\n    handle: '@np'\n    name: NP\n    search_query: q\n    pipeline: np\n    enabled: true\n");
+    await writeFile(join(sroot, "config/pipelines/np.yaml"),
+      "name: np\nmodel: m\nmax_turns: 5\nallowed_tools: [Write, Read]\n" +
+      "prompt:\n  template: prompts/eason/main.md\n  references: []\n" +
+      "post:\n  pdf: false\n  notify: false\n");
+    let picksClaude = 0;
+    const r = await runPipeline("np", {
+      studioRoot: sroot, runsRoot, claudeBin: FAKE,
+      spawner: async (file, args, opts) => {
+        if (file.endsWith("fake-claude.sh")) return spawnProc(file, args, opts);
+        if (file === "claude") picksClaude++;
+        return { code: 0 };
+      },
+    });
+    expect(r.status).toBe("succeeded");
+    expect(picksClaude).toBe(0);
+    expect(r.progress).toEqual({
+      digest: "skipped", analysis: "done", postprocess: "done", quality: "done",
+    });
+  });
 });
