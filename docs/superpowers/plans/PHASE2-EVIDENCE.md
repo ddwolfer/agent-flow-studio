@@ -181,3 +181,38 @@ The `digest:running → digest:done + analysis:running` handoff at 20:07:09 is t
 ## v1.1 verdict
 
 Per-stage live progress **works and is proven** at the runner + API + pure-mapping layers, with a real run showing the live `digest→analysis` handoff. The honest limitation the user accepted (channels static, persistence derived — runner can't observe persistence inside a single claude turn) is encoded in `nodeRunStatus` and stated plainly. Only the in-browser visual rendering remains for a human to eyeball. Not faked.
+
+---
+
+# Multi-analyst extensibility + 游庭皓 (v1) — 2026-05-20
+
+**Built across commits** ba76e55 → d622449 (8 plan tasks). Spec `2026-05-20-multi-analyst-yutinghao-design.md`. Goal: pipelines analyst-agnostic + a standalone 游庭皓 macro pipeline, designed so future analysts are config-only.
+
+## Extensibility refactor — proven (89 vitest green, tsc clean, next build ok across every task)
+
+- PipelineFile: `post.picks`/`quality_judge` optional, `allowed_tools` required (T1). loadConfig `picksPrompt?`/`judgeRubric?` conditional.
+- `EASON_ALLOWED_TOOLS` constant removed → per-pipeline `allowed_tools` in yaml; `pipelineAllowedTools()` (T2). eason.yaml declares its 15 tools.
+- `pipelineStore` allow-list derived from `channels.yaml`, not a hardcoded `{"eason"}` set (T3).
+- `runPipeline`/`postProcess` skip the picks stage when a pipeline declares no `post.picks` — additive only, Eason path byte-identical, rigorously reviewed regression-safe; the unplanned `runClaude.ts` fake-only `cwd` skip is test-only-by-construction (T4).
+- `/api/runs` POST now renders mcp.json + passes the pipeline's `allowed_tools` (T5) — closes the long-standing "canvas runs had no MCP" gap for **both** analysts.
+- Canvas RunBar: analyst `<select>` of enabled channels; `channelId` no longer hardcoded (T7).
+
+## THE extensibility proof ✅
+`grep -rn "yutinghao|游庭皓" studio/lib studio/app studio/components --include=*.ts --include=*.tsx` (excluding tests) → **ZERO matches**. Adding the 游庭皓 analyst was **config + prompts only** (`config/pipelines/yutinghao.yaml`, `prompts/yutinghao/*`, one `channels.yaml` line) — no TypeScript touched (T6). The "easy to add more YouTubers" requirement is met and demonstrated.
+
+## 游庭皓 real confirming run ✅
+runId `2026-05-19T19-18-39-101Z_yutinghao` · gitSha d622449 · **status succeeded** · progress `{digest:done, analysis:done, postprocess:done, quality:done}`.
+- report.html 21,241 B with **all five of his sections present**: 市場快照 ✓ 總經觀點 ✓ 關鍵數據 ✓ 風險 ✓ 報告總結 ✓ — and **none of Eason's** (指標儀表板/邏輯鏈/今日語錄 absent) → it is genuinely a 游庭皓 macro report, not Eason output.
+- Digest pass (proven in the first attempt's `transcript-digest.md`, 8.2 KB) produced a faithful macro digest from real captions (13,139 chars): 游庭皓 stance 偏謹慎, a rich 關鍵總經數據與解讀 with real numbers (道瓊/SPX/費半, 30Y/10Y yields, 紅海運費翻4倍, 石油缺口600-900萬桶, SPX EPS +25%, market breadth, 核電, 台灣職缺/教師荒…), risks, 10 verbatim quotes. Two-pass + per-pipeline machinery worked end-to-end for a brand-new analyst.
+- Picks-less correctly skipped: `0` `eason_picks`/`create_record` attempts (schema generalisation confirmed; no DB, as designed).
+
+## Eason regression check ✅
+runId `2026-05-19T19-18-39-135Z_eason` · **status succeeded** · all stages done · report 23,929 B with Eason's sections intact (指標儀表板/邏輯鏈/今日語錄/風險/報告總結). The refactor did **not** regress Eason.
+
+## Honest notes (NOT glossed)
+- The **first** 游庭皓 attempt (`…19-10-30Z`) **failed** — `claude.log`: `API Error: The socket connection was closed unexpectedly` in the analysis pass. This was **transient infra flakiness, not a defect**: its digest pass had already succeeded perfectly, and the immediate retry succeeded cleanly. Notably the runner correctly recorded the transient failure (`progress.analysis:"error"`, `stage:"runClaude"`) — the FU-style error/progress machinery handled it right.
+- `prompts/yutinghao/main.md` still opens with the inherited `/eason-analysis` skill line (copied from the eason template). It **worked** (produced his correct macro sections), but the inherited tool also has a `macro-analysis` skill that fits 游庭皓's top-down style better — switching to it is a reasonable **future quality refinement**, not a bug, and explicitly not done here (out of this plan's scope; the failure cause was infra, not this line).
+- Combined/consensus briefing (游庭皓 + Eason in one report) remains a **separate future FU** as agreed (先獨立、再組合). Canvas `持久化` node stays Eason-shaped (not meaningful for the picks-less 游庭皓) — documented v1 cosmetic limitation, unchanged.
+
+## Verdict
+Multi-analyst extensibility is **proven end-to-end**: a second, structurally-different analyst (macro, no picks, own tools) was added with **zero TypeScript**, runs successfully producing its own genuine report, while Eason remains regression-free. The refactor's goal — "adding more YouTubers = config + prompts" — is demonstrably achieved. Reported with the transient-failure and skill-choice caveats stated plainly, not faked.
