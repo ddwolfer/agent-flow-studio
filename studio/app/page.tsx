@@ -26,7 +26,7 @@ export default function Home() {
 
   return (
     <main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <RunBar channelId="eason" onActive={onActive} />
+      <RunBar onActive={onActive} />
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <div style={{ flex: 1 }}>
           <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes}
