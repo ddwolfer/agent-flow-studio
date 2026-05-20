@@ -1,0 +1,26 @@
+{
+  "$schema_version": 1,
+  "name": "us-macro",
+  "description": "Daily US macro briefing — Fed policy, growth/labour, inflation, rates curve, risk regime",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 60,
+  "sources": [
+    { "kind": "macro_data", "name": "FRED" },
+    { "kind": "macro_data", "name": "Yahoo indices" },
+    { "kind": "web", "name": "fed-press", "url": "https://www.federalreserve.gov/newsevents/pressreleases.htm" }
+  ],
+  "tools": ["fred", "yahoo-finance", "web-fetch"],
+  "prompts": [
+    "prompts/shared/faithfulness.md",
+    "prompts/us-macro/framework.md",
+    "prompts/us-macro/voice.md",
+    "prompts/us-macro/main.md"
+  ],
+  "output": "reports/us-macro/{date}.html",
+  "post": { "pdf": true },
+  "history": {
+    "format": "jsonl",
+    "summarize_with": "claude-haiku-4-5",
+    "fields": ["risk_regime", "confidence", "fed_path_signal", "top_signals", "top_risks"]
+  }
+}
