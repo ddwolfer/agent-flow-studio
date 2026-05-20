@@ -1,0 +1,27 @@
+{
+  "$schema_version": 1,
+  "name": "deep-stock-research",
+  "description": "Retail-grade deep stock research using free MCPs (Yahoo + FRED + web-fetch). Structure adapted from Anthropic's anthropics/financial-services market-researcher agent; honest about NOT being institutional-grade (no FactSet/Daloopa/S&P access). Edit the sources[] list to change your watchlist.",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 80,
+  "sources": [
+    { "kind": "stock", "name": "NVDA", "url": "https://investor.nvidia.com/" },
+    { "kind": "stock", "name": "TSM",  "url": "https://investor.tsmc.com/english" },
+    { "kind": "stock", "name": "AAPL", "url": "https://investor.apple.com/" },
+    { "kind": "stock", "name": "MSFT", "url": "https://www.microsoft.com/en-us/Investor" }
+  ],
+  "tools": ["yahoo-finance", "fred", "web-fetch"],
+  "prompts": [
+    "prompts/shared/faithfulness.md",
+    "prompts/stock-research/framework.md",
+    "prompts/stock-research/voice.md",
+    "prompts/stock-research/main.md"
+  ],
+  "output": "reports/deep-stock-research/{date}.html",
+  "post": { "pdf": true },
+  "history": {
+    "format": "jsonl",
+    "summarize_with": "claude-haiku-4-5",
+    "fields": ["tickers_covered", "overall_market_view", "avg_confidence", "top_signals", "top_risks"]
+  }
+}
