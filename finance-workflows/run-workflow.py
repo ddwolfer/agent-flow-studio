@@ -9,6 +9,7 @@ sys.path.insert(0, str(HERE))
 from workflow import load_workflow, resolve_output, WorkflowError  # noqa
 from mcp_render import render_mcp, derive_allowed_tools, McpRenderError  # noqa
 from prompt_build import build_prompt  # noqa
+from history_extract import extract_first_json_object  # noqa
 
 
 # Tool map: every MCP server in the template + the tool ids it exports.
@@ -125,22 +126,24 @@ def main(argv=None):
     # Optional history (best-effort)
     if cfg.history is not None:
         try:
-            hint = ("Read the following HTML and produce ONE LINE of compact JSON "
-                    f"with exactly these keys: {cfg.history.fields}. No prose, "
-                    "no markdown fences, just one JSON object.\n\n"
+            hint = ("Read the following HTML and produce a single JSON object "
+                    f"with exactly these keys: {cfg.history.fields}. Prefer a bare "
+                    "JSON object, but prose/markdown fences around it are tolerated.\n\n"
                     f"---\n{output_abs.read_text('utf-8')}\n---")
             hist = subprocess.run(
                 [bin_, "-p", hint, "--model", cfg.history.summarize_with,
                  "--max-turns", "1"],
                 cwd=str(root), capture_output=True, text=True)
-            line = (hist.stdout or "").strip().splitlines()[-1] if hist.stdout else ""
-            if line.startswith("{") and line.endswith("}"):
-                obj = json.loads(line)
+            obj = extract_first_json_object(hist.stdout or "")
+            if obj is not None:
                 obj["date"] = date
                 obj["output"] = output_rel
                 hist_path = output_abs.parent / "_history.jsonl"
                 with hist_path.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+            else:
+                print("[history] skipped: stdout did not contain a parseable JSON object",
+                      file=sys.stderr)
         except Exception as e:
             print(f"[history] skipped: {e}", file=sys.stderr)
 
