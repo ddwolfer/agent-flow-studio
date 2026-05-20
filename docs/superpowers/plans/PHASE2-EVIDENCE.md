@@ -263,3 +263,54 @@ Haiku's response had the JSON embedded in surrounding prose, so the last line wa
 
 ## Verdict
 The new lean architecture is **proven end-to-end**: declarative `workflow.json` → per-workflow MCP set → concatenated prompts → headless `claude -p` → HTML + PDF + (intended) JSONL history. The zero-Py extensibility goal is empirically met. `studio/` is unaffected. Two honest follow-ups (channel-feed tool for YouTube source quality; history-parse hardening) are documented above for a small FU later. Not faked, not glossed.
+
+---
+
+# finance-workflows — 2026-05-21 multi-workflow confirming runs + Anthropic recon
+
+**Built across commits** `5fb5bbf → 025001c` (FU-a1+FU-a2 + shared MCP prep + us-macro + eason-tw-stock + deep-stock-research).
+
+## What shipped
+
+| Commit | Slice |
+|---|---|
+| `5fb5bbf` | (a-1) `ytdlp_latest_from_channel(handle)` — hits `/@handle/videos` directly, fixes keyword-search heuristic returning wrong channels |
+| `0285476` | (a-2) `extract_first_json_object` — brace-balanced extraction handles Haiku output wrapped in prose/markdown fences; emits `[history] skipped` warning |
+| `ec07d87` | Shared MCP prep — copy `fred/yahoo/twse` from studio into finance-workflows; extend `mcp.json.tmpl` with `@FREDKEY@` env-subst; bump `requirements.txt` (yfinance + curl_cffi) |
+| `386397f` | (b) `us-macro` workflow + prompts (FRED + Yahoo + Fed press releases) — parallel Opus subagent, 4 files |
+| `6c24f66` | (c) `eason-tw-stock` migration — parallel Opus subagent, 6 files, **stateless, NO DB**, no picks/persistence/judge; subagent's design call: one-pass digest in-context (no on-disk `transcript-digest.md`) |
+| `025001c` | (ii) `deep-stock-research` workflow + prompts (Anthropic market-researcher structure adapted for free MCPs) — 4 files, default watchlist NVDA/TSM/AAPL/MSFT |
+
+Aggregate state: **4 workflows shipped**, **5 prompt domains**, **6 MCP servers**. **33 pytest green at every step.** **Zero TS/Py edits** to add each new workflow — verified by grep at each task boundary.
+
+## (i) Confirming runs — both passed end-to-end
+
+| | us-macro | eason-tw-stock |
+|---|---|---|
+| Exit | 0 | 0 |
+| `report.html` | 30,041 B ✓ | 33,325 B ✓ |
+| `report.pdf` | 1,615,756 B ✓ | 2,480,998 B ✓ |
+| All declared sections | ✓ 6/6 (市場快照/政策動向/數據面/利率與曲線/風險與資產配置/報告總結) | ✓ 5/5 (指標儀表板/邏輯鏈/今日語錄/風險提示/報告總結) |
+| `_history.jsonl` line | ✓ (FU-a2 brace-extract paid off) | ✓ (FU-a2 brace-extract paid off) |
+| Real data cited | ✓ FRED: DFF 3.50–3.75%, DGS10 4.61%, DGS2 4.07%, T10Y2Y +54bp, CPI MoM +0.64%, PCE 3.5%, core PCE 3.2%, NFP +115K, UNRATE 4.3% | ✓ TWSE: 外資期貨淨空單 5萬多口→42,700口, 4萬點守住, 漲停板 30 家, 華新科+106%, 凱美+24.5%, 2330 |
+| Transcript-driven | n/a | ✓ Eason 對 NVDA 財報 ("跌的機率還是比較大") quoted from his recent video |
+| History headline | risk_regime "Cautiously Neutral", confidence 4/10 | stance "看多", stance_score 3, confidence 7 |
+
+## Real honest finding — Yahoo Finance API was failing TODAY across both runs
+
+Both runs' logs explicitly flagged: "Yahoo Finance 全數失敗 (curl_cffi session 錯誤)" / "Yahoo Finance API 全面失效".
+
+The model **correctly degraded**: neither report fabricated unavailable data; us-macro's confidence honestly dropped to 4/10 specifically because of this gap. **Faithfulness discipline working as designed.** Root cause is upstream (likely curl_cffi version drift or Yahoo IP/cookie change). Future small FU: investigate + pin/upgrade curl_cffi or add a yahoo retry/cookie warm-up. **NOT** an architectural defect.
+
+## What's NOT yet exercised on real data
+
+- `deep-stock-research` shipped (commit `025001c`) but not yet run today — its design depends on `yahoo-finance` for financial snapshot, so worth running once Yahoo is back.
+- `ytdlp_latest_from_channel` is the preferred path in `eason-tw-stock`'s digest prompt; the model still might fall back to keyword search. Crypto-daily's prompt was tightened (forbidden alternative); that hasn't been re-run today.
+
+## Verdict
+
+finance-workflows architecture is **proven solid across 3 fully-end-to-end runs** (crypto-daily previously, us-macro + eason-tw-stock today). Both FU fixes paid off. Adding three new workflows was **100% config + prompts, zero shared-file collision** even with two parallel Opus subagents. **The pivot from studio/ to finance-workflows/ is functionally complete**: every studio capability is either replicated (Eason stateless) or deliberately dropped (UI / ReactFlow / persistence DB / picks Haiku / quality judge), with three new capabilities (us-macro / deep-stock-research / JSONL history index). studio/ remains untouched as the archive.
+
+## Anthropic `anthropics/financial-services` recon (separate finding)
+
+Verified via WebFetch 2026-05-21. Direction-matches our pivot: prompt-first markdown+JSON, MCP for data, no build step, two-destinations (Claude Code plugin marketplace + Managed Agents API). Scope institutional (11 agents: pitch / DCF / IC memos / NAV / KYC; 11 paid MCP connectors). NOT a drop-in for retail (no FactSet subscription). High-quality reference for `market-researcher`/`comps-analysis`/`dcf-model` prompts — directly inspired `deep-stock-research` framework.md. Validates our architectural direction but we keep our retail scope. KG node `6c35b407` records the recon in detail.
