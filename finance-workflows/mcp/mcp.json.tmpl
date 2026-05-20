@@ -1,7 +1,10 @@
 {
   "mcpServers": {
-    "yt-dlp":     { "command": "@PY@", "args": ["@MCPDIR@/servers/ytdlp_server.py"] },
-    "rss":        { "command": "@PY@", "args": ["@MCPDIR@/servers/rss_server.py"] },
-    "web-fetch":  { "command": "@PY@", "args": ["@MCPDIR@/servers/web_fetch_server.py"] }
+    "yt-dlp":        { "command": "@PY@", "args": ["@MCPDIR@/servers/ytdlp_server.py"] },
+    "rss":           { "command": "@PY@", "args": ["@MCPDIR@/servers/rss_server.py"] },
+    "web-fetch":     { "command": "@PY@", "args": ["@MCPDIR@/servers/web_fetch_server.py"] },
+    "fred":          { "command": "@PY@", "args": ["@MCPDIR@/servers/fred_server.py"], "env": { "FRED_API_KEY": "@FREDKEY@" } },
+    "yahoo-finance": { "command": "@PY@", "args": ["@MCPDIR@/servers/yahoo_server.py"] },
+    "twse":          { "command": "@PY@", "args": ["@MCPDIR@/servers/twse_server.py"] }
   }
 }

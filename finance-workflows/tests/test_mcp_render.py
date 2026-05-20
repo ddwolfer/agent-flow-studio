@@ -34,6 +34,41 @@ def test_render_rejects_unknown_tool(tmp_path):
     except m.McpRenderError as e:
         assert "coingecko" in str(e)
 
+def test_env_subs_resolves_placeholder(tmp_path):
+    m = _load()
+    tmpl = tmp_path / "mcp.json.tmpl"
+    tmpl.write_text("""{
+      "mcpServers": {
+        "fred": {"command": "@PY@", "args": ["@MCPDIR@/servers/fred_server.py"],
+                  "env": {"FRED_API_KEY": "@FREDKEY@"}}
+      }
+    }""", "utf-8")
+    out = tmp_path / "mcp.json"
+    m.render_mcp(tools=["fred"], mcp_dir=str(tmp_path / "mcp"),
+                 python_bin="/x/py", tmpl_path=tmpl, out_path=out,
+                 env_subs={"FREDKEY": "secret123"})
+    cfg = json.loads(out.read_text("utf-8"))
+    assert cfg["mcpServers"]["fred"]["env"]["FRED_API_KEY"] == "secret123"
+
+
+def test_env_subs_unresolved_left_literal(tmp_path):
+    """If a template references @KEY@ we don't supply, leave it literal so the
+    failure surfaces at MCP startup rather than being silently masked."""
+    m = _load()
+    tmpl = tmp_path / "mcp.json.tmpl"
+    tmpl.write_text("""{
+      "mcpServers": {
+        "fred": {"command": "@PY@", "args": ["@MCPDIR@/servers/fred_server.py"],
+                  "env": {"FRED_API_KEY": "@FREDKEY@"}}
+      }
+    }""", "utf-8")
+    out = tmp_path / "mcp.json"
+    m.render_mcp(tools=["fred"], mcp_dir=str(tmp_path / "mcp"),
+                 python_bin="/x/py", tmpl_path=tmpl, out_path=out, env_subs=None)
+    cfg = json.loads(out.read_text("utf-8"))
+    assert cfg["mcpServers"]["fred"]["env"]["FRED_API_KEY"] == "@FREDKEY@"
+
+
 def test_derive_allowed_tools_from_servers():
     m = _load()
     out = m.derive_allowed_tools(["rss", "yt-dlp"], {

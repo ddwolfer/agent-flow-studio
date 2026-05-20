@@ -23,7 +23,38 @@ TOOL_MAP = {
     ],
     "rss": ["rss_fetch"],
     "web-fetch": ["web_fetch", "web_extract_article"],
+    "fred": ["fred_get_series"],
+    "yahoo-finance": ["get_stock_info", "get_historical_stock_prices"],
+    "twse": [
+        "get_daily_market_trading_info",
+        "get_market_index_info",
+        "get_margin_trading_info",
+        "get_stock_daily_trading",
+        "get_foreign_investment_by_industry",
+    ],
 }
+
+
+def _load_env_subs(root):
+    """Read FRED_API_KEY (and any other @KEY@ env subs) from the inherited
+    .env file or current process env. Returns a dict suitable for render_mcp's
+    `env_subs=` kwarg; missing values are simply omitted (template's @KEY@ stays
+    literal — see render_mcp docstring)."""
+    subs = {}
+    # 1) process env wins
+    if os.environ.get("FRED_API_KEY"):
+        subs["FREDKEY"] = os.environ["FRED_API_KEY"]
+        return subs
+    # 2) fall back to the inherited tool's .env
+    env_file = root / ".." / "financial-report-system" / "scripts" / ".env"
+    try:
+        for line in env_file.read_text("utf-8").splitlines():
+            if line.startswith("FRED_API_KEY="):
+                subs["FREDKEY"] = line.split("=", 1)[1].strip()
+                break
+    except FileNotFoundError:
+        pass
+    return subs
 
 
 def _resolve_root():
@@ -72,7 +103,8 @@ def main(argv=None):
     try:
         mcp_json_path = render_mcp(tools=cfg.tools, mcp_dir=mcp_dir,
                                    python_bin=_python_bin(root),
-                                   tmpl_path=tmpl, out_path=out_mcp)
+                                   tmpl_path=tmpl, out_path=out_mcp,
+                                   env_subs=_load_env_subs(root))
     except (FileNotFoundError, McpRenderError) as e:
         print(f"[mcp_render] {e}", file=sys.stderr); return 3
 
