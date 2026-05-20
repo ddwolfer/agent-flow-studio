@@ -10,7 +10,7 @@
     { "kind": "stock", "name": "AAPL", "url": "https://investor.apple.com/" },
     { "kind": "stock", "name": "MSFT", "url": "https://www.microsoft.com/en-us/Investor" }
   ],
-  "tools": ["yahoo-finance", "fred", "web-fetch"],
+  "tools": ["yahoo-finance", "fred", "web-fetch", "edgar"],
   "prompts": [
     "prompts/shared/faithfulness.md",
     "prompts/stock-research/framework.md",

@@ -22,7 +22,11 @@ ${SOURCES_JSON}
 
 A. **Yahoo 抓快照**:`mcp__yahoo-finance__get_stock_info(ticker=<TICKER>)` — 拿到 longBusinessSummary、sector、industry、marketCap、currentPrice、trailingPE / forwardPE / pegRatio / priceToBook、profitMargins / operatingMargins / returnOnEquity、revenueGrowth / earningsGrowth、debtToEquity / freeCashflow、dividendYield、52 週區間。**不要呼叫 `get_historical_stock_prices` 拿全歷史**(資料量大、用不上)—— 只在你需要近期趨勢且 `get_stock_info` 沒給時才用。
 
-B. **公司 IR 頁**:`mcp__web-fetch__web_extract_article(url=<source.url>)` — 抓公司投資人關係頁的近期內容(可能是最新財報摘要、IR presentation 連結、近期事件)。若該頁回不到內容(403 / 403 / 內容空),就標註 IR 頁不可用,繼續。
+B. **公司年度報告 (SEC EDGAR)** —— 取代之前的 IR 頁抓取(IR 頁多為 JS-rendered SPA,headless 抓不到):
+   - `mcp__edgar__edgar_latest_annual(ticker=<TICKER>)` → 找該公司最新 10-K(美企)/20-F(外國發行人,例如 TSM)/40-F。回傳 `primary_doc_url`。
+   - `mcp__edgar__edgar_fetch_text(url=<primary_doc_url>, max_chars=60000, offset=0)` → 取前 60K 字的純文字(已 strip script/style)。文件通常 200K+ 字;**你只需要看「Item 1. Business」與「Item 1A. Risk Factors」這兩節**(它們通常在前 60K 內)。如果 `truncated=true` 且你還沒看到 Item 1A,用 `offset=<回傳的 end>` 再叫一次續讀。
+   - 若 EDGAR 連 ticker 都解析不到(例如 ADR 結構特殊),才退回 `web_extract_article(<source.url>)` 抓 IR 頁;**該頁回空就標註不可用,不要編造**。
+   - 用 EDGAR 取到的「Item 1. Business」內容做「公司概覽 / 產品 / 業務分析」段落,逐字引述他們的描述;「Item 1A. Risk Factors」對應你的「風險」段落(挑 3-5 條最具體、非樣板的)。
 
 C. **近期新聞**(可選):若你判斷該股近期(過去 7 天)有具體事件(財報、產品發表、地緣風險),可用 `mcp__web-fetch__web_fetch` 或 `web_extract_article` 抓 Yahoo Finance 該 ticker 的 news 頁面(`https://finance.yahoo.com/quote/<TICKER>/news`)。不確定就跳過,不要編造新聞。
 

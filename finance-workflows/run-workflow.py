@@ -32,6 +32,11 @@ TOOL_MAP = {
         "get_stock_daily_trading",
         "get_foreign_investment_by_industry",
     ],
+    "edgar": [
+        "edgar_resolve_ticker",
+        "edgar_latest_annual",
+        "edgar_fetch_text",
+    ],
 }
 
 
