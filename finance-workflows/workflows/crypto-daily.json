@@ -1,0 +1,26 @@
+{
+  "$schema_version": 1,
+  "name": "crypto-daily",
+  "description": "Daily crypto + crypto-adjacent macro briefing",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 60,
+  "sources": [
+    { "kind": "youtube", "handle": "@crypto_punks", "search_query": "crypto_punks" },
+    { "kind": "youtube", "handle": "@BTV_CN", "search_query": "BTV_CN" },
+    { "kind": "web", "name": "zombit", "url": "https://zombit.info/", "rss": "https://zombit.info/feed/" }
+  ],
+  "tools": ["yt-dlp", "rss", "web-fetch"],
+  "prompts": [
+    "prompts/shared/faithfulness.md",
+    "prompts/crypto/framework.md",
+    "prompts/crypto/voice.md",
+    "prompts/crypto/main.md"
+  ],
+  "output": "reports/crypto-daily/{date}.html",
+  "post": { "pdf": true },
+  "history": {
+    "format": "jsonl",
+    "summarize_with": "claude-haiku-4-5",
+    "fields": ["overall_stance", "confidence", "top_signals", "top_risks"]
+  }
+}
