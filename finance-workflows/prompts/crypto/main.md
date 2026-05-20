@@ -9,7 +9,7 @@ ${SOURCES_JSON}
 
 ## 步驟
 
-1. **抓 YouTube 來源**:對每個 `kind=youtube` 的來源,用 `mcp__yt-dlp__ytdlp_search_videos(query=<source.search_query>, maxResults=2)` 找今日(或最近一支)影片;選 `upload_date == ${DATE}` 的那筆,沒有就用日期最新那筆。
+1. **抓 YouTube 來源**:對每個 `kind=youtube` 的來源,**優先用 `mcp__yt-dlp__ytdlp_latest_from_channel(handle=<source.handle>, max_results=3)`** —— 它直接打該頻道的 `/videos` 頁面、回傳真正的該頻道近期影片,比關鍵字搜尋可靠很多。從回傳列表選 `upload_date == ${DATE}` 的那筆,沒有就用排在最前面(最新)那筆。**禁止**用 `ytdlp_search_videos` 找這類有明確 handle 的來源 —— 它的關鍵字啟發式會把 `@crypto_punks` 之類的 handle 搜成不相關頻道。
 2. **逐字稿**:對選定的影片從 `page=0` 起呼叫 `mcp__yt-dlp__ytdlp_transcript_page(video_url, page=<n>, page_size=12000)`,讀 `total_pages`,**逐頁讀到 page == total_pages-1** 拼成完整逐字稿。若 source 是 `none`(無字幕)就在報告中標註該影片不可用、繼續其餘來源。
 3. **抓 web/rss 來源**:對 `kind=web` 的來源,先試 `mcp__rss__rss_fetch(url=<source.rss>, max_items=15)` —— 如果回空,改用 `mcp__web-fetch__web_extract_article(url=<source.url>)` 抓首頁找今日(${DATE})文章的連結,再對每個連結 `web_extract_article` 抓內文。重點是**今日新發布**的文章。
 4. **綜合分析**:依參考的 framework + voice,做 top-down 整合,**不要對任何一個來源做整段流水帳**,要交叉比對:大家觀點一致 vs 分歧的地方明確列出來。

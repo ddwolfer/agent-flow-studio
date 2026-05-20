@@ -16,6 +16,7 @@ from prompt_build import build_prompt  # noqa
 TOOL_MAP = {
     "yt-dlp": [
         "ytdlp_search_videos",
+        "ytdlp_latest_from_channel",
         "ytdlp_download_transcript",
         "ytdlp_transcript_page",
     ],

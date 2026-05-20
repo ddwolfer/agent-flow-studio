@@ -164,6 +164,30 @@ def ytdlp_search_videos(query: str, maxResults: int = 1, uploadDateFilter: str =
     return _map_search(info, maxResults)
 
 @mcp.tool()
+def ytdlp_latest_from_channel(handle: str, max_results: int = 5):
+    """Fetch the latest videos from a YouTube channel handle (e.g. '@crypto_punks').
+
+    Hits the channel's /videos page directly via extract_flat — more reliable than
+    `ytdlp_search_videos` for finding a specific channel's recent uploads (the keyword
+    search can return unrelated channels when the handle name isn't unique).
+
+    Returns [{video_id, title, upload_date, url}] in chronological order (newest first
+    as returned by YouTube). Never raises — returns [] on any failure.
+    """
+    h = (handle or "").lstrip("@")
+    if not h:
+        return []
+    url = f"https://www.youtube.com/@{h}/videos"
+    try:
+        opts = {"quiet": True, "extract_flat": True,
+                "playlistend": max(int(max_results), 1)}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception:
+        return []
+    return _map_search(info, max_results)
+
+@mcp.tool()
 def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
     """
     Return the cleaned, bounded transcript text inline.
