@@ -314,3 +314,64 @@ finance-workflows architecture is **proven solid across 3 fully-end-to-end runs*
 ## Anthropic `anthropics/financial-services` recon (separate finding)
 
 Verified via WebFetch 2026-05-21. Direction-matches our pivot: prompt-first markdown+JSON, MCP for data, no build step, two-destinations (Claude Code plugin marketplace + Managed Agents API). Scope institutional (11 agents: pitch / DCF / IC memos / NAV / KYC; 11 paid MCP connectors). NOT a drop-in for retail (no FactSet subscription). High-quality reference for `market-researcher`/`comps-analysis`/`dcf-model` prompts — directly inspired `deep-stock-research` framework.md. Validates our architectural direction but we keep our retail scope. KG node `6c35b407` records the recon in detail.
+
+---
+
+# (α) Yahoo MCP fix + deep-stock-research live — 2026-05-21
+
+## Root cause (diagnosed before fixing)
+
+Both us-macro and eason-tw-stock runs earlier today flagged "Yahoo Finance 全數失敗 (curl_cffi session error)". Direct repro:
+```
+yahoo info failed: Yahoo API requires curl_cffi session not <class 'yahoo_server._SessionAdapter'>.
+Solution: stop setting session, let YF handle.
+```
+`yfinance` installed version was **1.3.0** (we required `>=0.2.51`). The studio-era `yahoo_server.py` compatibility shim (`_CookieCompat`/`_ResponseCompat`/`_SessionAdapter` + `_yf_data.YfData.user_agent_headers` patching + manual `cffi.Session(impersonate="chrome")`) was written for yfinance **0.2.51** and is **actively rejected** by yfinance 1.x — which now handles curl_cffi internally. Bare `yf.Ticker('NVDA').info` worked instantly in the same venv.
+
+## Fix (commit `5d8b77b`)
+
+Rewrote `finance-workflows/mcp/servers/yahoo_server.py` to the minimal yfinance 1.x form:
+- Dropped all 3 compat classes + the `_yf_data.YfData.user_agent_headers` monkey-patch + the manual `cffi.Session`
+- `get_stock_info(ticker)` now returns the **raw `yf.Ticker(ticker).info` dict** (~100 keys: longBusinessSummary/sector/industry/marketCap/currentPrice/trailingPE/forwardPE/pegRatio/priceToBook/profitMargins/operatingMargins/returnOnEquity/revenueGrowth/earningsGrowth/debtToEquity/freeCashflow/dividendYield/52w range/…) — much richer than the old 4-field wrap
+- `get_historical_stock_prices` returns `{date,open,high,low,close,volume}` per bar
+- Both still never-raise; failure → `{ticker, error}`
+- **6 hermetic tests** (`tests/test_yahoo_server.py`) covering raw-dict return, empty-info-treated-as-failure, exception caught, history bars shape, empty-history failure, history-exception
+- Suite: **39/39 green**
+- **Live smoke**: `get_stock_info('NVDA')` returned full info (marketCap $5.41T, P/E 45.6, fwdP/E 19.3, profit margins 55.6%, revenue growth 73.2%) + 5d history $235→$223. Yahoo back live.
+
+## deep-stock-research confirming run (the natural next step) — 2026-05-21
+
+Triggered immediately after the Yahoo fix. Exit 0. Artefacts:
+
+| | value |
+|---|---|
+| `report.html` | **45,914 B** (largest report we've produced) |
+| `report.pdf`  | 2,037,132 B |
+| `_history.jsonl` | 1 line, 2,450 B |
+| Sections per ticker (NVDA/TSM/AAPL/MSFT) | ✓ all 4 covered |
+| All 7 framework layers + 總經背景 + 整體市場 view | ✓ |
+
+**Real per-ticker Yahoo data deeply integrated**: NVDA $223.47 / P/E 45.6 / +95.6% revenue growth; TSM $302.25 / +58.4% revenue growth; AAPL $193.46 / PEG 2.59; MSFT $421.97 / P/E 25 / -7.77% YTD vs S&P 500 +25.8%. **Real FRED woven in**: 10Y 4.61%, T10Y2Y +0.54%, CPI MoM +0.64%.
+
+**Honest disclaimers right in the report header**: "IR 頁面（investor.nvidia.com、investor.tsmc.com、investor.apple.com）本次抓取均返回空內容，無法引用 IR 原始陳述；相關段落標有「IR 頁不可用」。Yahoo Finance 新聞頁返回 503，本次無法補充近期新聞." → that's the faithfulness discipline at work; report degraded honestly on the IR-page extraction, didn't fabricate, but still produced substantive analysis off the structured Yahoo numbers + FRED.
+
+**Cross-ticker analytical insight in the report**: "MSFT relative valuation (PE 25x vs NVDA 45.6x) offers downside protection" / "10Y at 4.61% compresses discount rates for high-PE stocks; NVDA (Beta 2.24) most vulnerable above 4.8%" / "if cloud capex slowdown signal in Jul–Aug 2026 earnings, all four tech holdings face synchronized downgrades" — this is structured retail-grade analysis, not Bloomberg, but vastly better than the empty Yahoo case earlier today.
+
+**Average confidence 5.75/10** — honestly calibrated (mid because IR pages 403'd; numbers solid but qualitative depth limited).
+
+## Verdict (α complete)
+
+Yahoo MCP repaired (yfinance 1.x compatibility) → all three earlier-stalled use cases for Yahoo (us-macro market-snapshot, eason-tw-stock NVDA/TSM ADR/費半 verification, deep-stock-research per-ticker fundamentals) are unblocked. KG rule `f83beb66` records the "yfinance 1.x rejects session shim — drop it" durable lesson with the exact error message + commit reference so it won't be re-debugged from scratch.
+
+## State of finance-workflows after today
+
+**4 workflows shipped, all proven on real data**:
+- `crypto-daily` (FU-5 era, runs)
+- `us-macro` (today, runs)
+- `eason-tw-stock` (today, runs)
+- `deep-stock-research` (today, runs end-to-end with the Yahoo fix)
+
+**6 MCP servers** (yt-dlp / rss / web-fetch / fred / yahoo-finance / twse), all live & exercised.
+**5 prompt domains** (shared / crypto / us-macro / tw-stock / stock-research).
+**studio/** untouched (archive).
+**39 pytest green**, full suite passes after every slice.
