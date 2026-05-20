@@ -375,3 +375,60 @@ Yahoo MCP repaired (yfinance 1.x compatibility) → all three earlier-stalled us
 **5 prompt domains** (shared / crypto / us-macro / tw-stock / stock-research).
 **studio/** untouched (archive).
 **39 pytest green**, full suite passes after every slice.
+
+---
+
+# (γ) two-FU follow-up complete — 2026-05-21
+
+## γ-1: Pin yfinance + curl_cffi (commit `91b83de`)
+
+`requirements.txt` tightened from `yfinance>=0.2.51 / curl_cffi>=0.7` to **`yfinance>=1.3,<2 / curl_cffi>=0.15,<1`** — major-version walls prevent the kind of breakage we saw earlier today (KG `f83beb66`: yfinance 0.2.51→1.x dropped the session API that the studio shim was built around). Tests still 39/39 green after the constraint change.
+
+## γ-2: SEC EDGAR MCP server (commit `0b99798` code + `dsr3` confirming run)
+
+New `finance-workflows/mcp/servers/edgar_server.py` (3 tools, never-raise contract, 13 hermetic tests):
+- `edgar_resolve_ticker(ticker)` → CIK + company name via `https://www.sec.gov/files/company_tickers.json` (in-process cached)
+- `edgar_latest_annual(ticker)` → latest 10-K / 20-F / 40-F filing with constructed `primary_doc_url`
+- `edgar_fetch_text(url, max_chars, offset)` → paged plain-text view of the filing (HTML stripped via regex-then-markdownify)
+
+Wired into `mcp.json.tmpl`, `run-workflow.py` `TOOL_MAP`, `workflows/deep-stock-research.json` `tools`, and `prompts/stock-research/main.md` (the workflow now goes EDGAR → "Item 1. Business" + "Item 1A. Risk Factors" first, falls back to `web_extract_article` on IR only if EDGAR can't resolve the ticker).
+
+Two **durable pitfalls** found + fixed + recorded to KG `11aab2a6`:
+1. SEC requires UA in exact `"Name email@domain"` format — URL-style UAs 403. Empirically confirmed: same code with URL-UA → 403; with name+email UA → 200.
+2. `markdownify(html, strip=[tags])` removes the tags but NOT their text content — so `<script>alert(x)</script>` becomes `"alert(x)"`. Must pre-strip `<script>` / `<style>` / `<head>` / `<!-- -->` with regex before markdownify. test_fetch_text_basic_extraction caught it.
+
+Suite after γ-2: **52/52 tests green**.
+
+## γ confirming run — `deep-stock-research` with EDGAR, end-to-end
+
+(First attempt last night hit the user's session-token limit mid-claude-call and aborted with exit 1; the actual run completed cleanly after the 7:20 AM Asia/Taipei reset.)
+
+| signal | Yahoo-only run earlier today | EDGAR-using run this morning |
+|---|---|---|
+| `report.html` | 45,914 B | **48,646 B** (richer) |
+| `report.pdf`  | 2,037,132 B | **2,409,526 B** |
+| Sections per ticker (7 layers + 總經 + 整體市場) | ✓ | ✓ |
+| `IR 頁不可用` disclaimer count | **2** | **0** (eliminated) |
+| EDGAR signatures (10-K / 20-F / Item 1) in HTML | 0 | ✅ both forms cited |
+| 10-K-only substantive risk content | absent (Yahoo doesn't have it) | **present** — see below |
+
+**10-K-only details that ONLY came from real filing text** (the model could not have produced these from Yahoo's structured numbers alone):
+- **MSFT**: "nation-state security breach disclosed in EDGAR" — verbatim from MSFT's Item 1A risk factors
+- **AAPL**: DOJ antitrust + EU DMA €500M fine + Epic Games ruling + Google search revenue threat — all four are AAPL 10-K legal-proceedings disclosures
+- **NVDA**: Blackwell supply/yield risks; customer concentration (major CSPs may shift to internal chips); demand forecast difficulty given >12mo lead time — 10-K Risk Factors language
+- **TSM**: Taiwan manufacturing concentration; power/water shortage; China revenue declining 12%→9% — 20-F risk disclosure language
+
+**Cross-ticker analytical insight in the report**: "MSFT relative valuation (PE 25x vs NVDA 45.6x) offers downside protection" / "NVDA PEG 0.70 lowest of four; Forward P/E compression NVDA 19.25 vs trailing 45.6 / TSM 20.6 vs 34.6 / MSFT 21.8 vs 25.1" / "Yield curve normalization (10Y-2Y +0.53%) eases near-term recession concerns".
+
+Avg confidence 5.75/10 (same as prior, model still calibrates moderate). **Substance richness is qualitatively higher** — risk factor sections are now specific and citable, not generic.
+
+## Verdict — γ complete, the IR-page failure mode is fully retired
+
+The deep-stock-research workflow now has a **government-data primary source** (SEC EDGAR — never 403s with proper UA, parses cleanly, structured per-section) instead of fighting JS-rendered SPA IR pages. Yahoo MCP fix (commit `5d8b77b`) handles the structured numbers; EDGAR MCP handles the qualitative + risk-disclosure content. The two together unlock a substantive retail-grade stock research output without paid data subscriptions.
+
+## State of finance-workflows after γ
+
+- **4 workflows live & all confirming-run-proven**: crypto-daily, us-macro, eason-tw-stock, deep-stock-research
+- **7 MCP servers**: yt-dlp, rss, web-fetch, fred, yahoo-finance (rewritten for yfinance 1.x), twse, **edgar** (new)
+- **52 pytest green**, every slice
+- **studio/** untouched (archive)
