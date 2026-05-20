@@ -1,0 +1,28 @@
+{
+  "$schema_version": 1,
+  "name": "eason-tw-stock",
+  "description": "Daily Eason 台股實戰簡報",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 60,
+  "sources": [
+    { "kind": "youtube", "handle": "@m168", "search_query": "張貽程 外資超錢線" },
+    { "kind": "macro_data", "name": "TWSE indices+chips" },
+    { "kind": "macro_data", "name": "Yahoo TW+US" }
+  ],
+  "tools": ["yt-dlp", "twse", "yahoo-finance", "fred"],
+  "prompts": [
+    "prompts/shared/faithfulness.md",
+    "prompts/tw-stock/framework.md",
+    "prompts/tw-stock/voice.md",
+    "prompts/tw-stock/digest.md",
+    "prompts/tw-stock/transcript.md",
+    "prompts/tw-stock/main.md"
+  ],
+  "output": "reports/eason-tw-stock/{date}.html",
+  "post": { "pdf": true },
+  "history": {
+    "format": "jsonl",
+    "summarize_with": "claude-haiku-4-5",
+    "fields": ["stance", "stance_score", "confidence", "top_signals", "top_risks"]
+  }
+}
