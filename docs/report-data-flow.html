@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>報告資料流 — agent-flow-studio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --fg: #e5e7eb; --muted: #9ca3af; --border: #30363d;
+    --code-bg: #161b22; --link: #58a6ff; --accent: #2563eb;
+  }
+  html, body { background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    line-height: 1.65; margin: 0; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 28px 80px; }
+  h1 { font-size: 28px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+  h2 { font-size: 22px; margin-top: 40px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 17px; margin-top: 24px; color: #f3f4f6; }
+  p, li { color: var(--fg); }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-size: 0.92em;
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; overflow-x: auto; }
+  pre code { background: transparent; padding: 0; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; vertical-align: top; }
+  th { background: #161b22; text-align: left; }
+  blockquote { border-left: 3px solid #4b5563; color: var(--muted); margin: 14px 0; padding: 4px 14px; }
+  .mermaid { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px; margin: 16px 0; overflow-x: auto; text-align: center; }
+  .toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; margin: 18px 0 28px; }
+  .toc h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted); letter-spacing: 0.05em; }
+  .toc ol { margin: 0; padding-left: 22px; }
+  .toc li { font-size: 14px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .pill { display: inline-block; background: #1f2937; color: var(--fg); border: 1px solid var(--border);
+    border-radius: 999px; padding: 1px 8px; font-size: 12px; font-family: ui-monospace, monospace; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 32px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>報告資料流（Report Data Flow）</h1>
+<p class="meta"><strong>最後更新</strong>：2026-05-20 · 對應 commit <span class="pill">f3f422a</span> 之後的 main · 同步檔：<a href="report-data-flow.md">report-data-flow.md</a></p>
+<p>這份文件描述 agent-flow-studio <strong>目前實際</strong>的資料流（以程式碼為準，不是設計願景）。</p>
+
+<div class="toc">
+<h4>目錄</h4>
+<ol>
+  <li><a href="#sec-0">TL;DR（三句話）</a></li>
+  <li><a href="#sec-1">一個 Run 的鳥瞰圖</a></li>
+  <li><a href="#sec-2">兩個 pipeline 的對照（eason vs yutinghao）</a></li>
+  <li><a href="#sec-3">兩趟式（Two-Pass）— 為什麼要這樣設計</a></li>
+  <li><a href="#sec-4">Runner 的 4 個可觀測階段 + 進度回報</a></li>
+  <li><a href="#sec-5">五個 MCP 資料外掛（Pass-2 的數據扇入）</a></li>
+  <li><a href="#sec-6">設定載入鏈（channel → pipeline → prompts）</a></li>
+  <li><a href="#sec-7">Prompt 模板代換 conventions</a></li>
+  <li><a href="#sec-8">持久化：Eason 三張表 vs 游庭皓 0 張表</a></li>
+  <li><a href="#sec-9">一個 run dir 長什麼樣</a></li>
+  <li><a href="#sec-10">畫布側的整條鏈（按 Run → 節點上色）</a></li>
+  <li><a href="#sec-11">已知限制與未做事項（誠實）</a></li>
+  <li><a href="#sec-12">一行版索引（配對到程式碼）</a></li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="sec-0">0. TL;DR（三句話）</h2>
+<p>當你在畫布按下 <strong>Run</strong>，瀏覽器送 <code>POST /api/runs {channelId}</code> 給 Next 伺服器，伺服器 fire-and-forget 啟動 <code>runPipeline(channelId)</code> —— 它先用 <strong>Sonnet 第一趟</strong>把 YouTube 逐字稿分頁讀完寫成一份小而忠實的摘要（<code>transcript-digest.md</code>），再用 <strong>Sonnet 第二趟</strong>讀那份摘要 + 同時呼叫 5 個 MCP 資料外掛（yt-dlp / TWSE / Yahoo / FRED / SQLite）做完整分析、把 HTML 報告寫到 <code>runs/&lt;id&gt;/report.html</code>，並在過程中（只限 Eason）把訓練樣本、每日觀點寫進 SQLite。然後 <strong>後處理</strong>用 headless Chrome 轉 PDF，Eason 另外跑一支 Haiku 把報告裡的個股萃取進 <code>eason_picks</code>；<strong>品質檢查</strong>抓 HTML 看必填段落齊不齊；runner 每一階段把 <code>progress</code> 寫進 <code>run.json</code>，畫布每 4 秒輪詢回來上色。</p>
+
+<hr>
+
+<h2 id="sec-1">1. 一個 Run 的鳥瞰圖</h2>
+<pre class="mermaid">
+flowchart TB
+  subgraph UI["瀏覽器 (Canvas)"]
+    sel["分析師下拉<br/>(eason / yutinghao)"]
+    btn["Run 按鈕"]
+    poll["每 4s 輪詢<br/>/api/runs/&lt;newest&gt;"]
+    nodes["6 節點上色<br/>(摘要/分析/後處理/品質)"]
+  end
+
+  subgraph API["Next.js Server (port 3100)"]
+    post["POST /api/runs"]
+    render["renderMcpConfig()<br/>→ studio/mcp/mcp.json"]
+    rp["runPipeline(channelId)<br/>fire-and-forget"]
+  end
+
+  subgraph RUNNER["runPipeline 內部"]
+    lc["loadConfig:<br/>channels.yaml + pipelines/&lt;p&gt;.yaml<br/>+ prompts/&lt;p&gt;/*"]
+    p1["Pass-1 digestPass<br/>(Sonnet, yt-dlp+Write 限縮)"]
+    p2["Pass-2 runClaude<br/>(Sonnet, 完整 allowed_tools)"]
+    pp["postProcess<br/>(PDF / picks / notify)"]
+    q["mechanicalChecks<br/>(quality_sections)"]
+    ur["updateRun(run.json<br/>+ progress 每階段)"]
+  end
+
+  subgraph ART["runs/&lt;id&gt;/ 產物"]
+    rj["run.json<br/>status/progress/qualityOk"]
+    td["transcript-digest.md"]
+    dl["digest.log"]
+    cl["claude.log"]
+    rh["report.html"]
+    rp2["report.pdf"]
+  end
+
+  DB[("SQLite<br/>financial.db<br/>eason_training/daily/picks")]
+
+  sel --> btn --> post
+  post --> render --> rp
+  rp --> lc --> p1 --> p2 --> pp --> q --> ur
+  p1 --> td
+  p1 --> dl
+  p2 --> cl
+  p2 --> rh
+  p2 -- "Eason: 模型呼叫 sqlite MCP" --> DB
+  pp -- "headless Chrome" --> rp2
+  pp -- "Eason 才有: claude -p picks.md (Haiku)" --> DB
+  ur --> rj
+  poll --> rj
+  rj --> nodes
+</pre>
+
+<hr>
+
+<h2 id="sec-2">2. 兩個 pipeline 的對照（eason vs yutinghao）</h2>
+<p>兩條 pipeline 共用同一個 runner，只在「設定 + prompts」分歧 —— <strong>加新分析師 = 純設定</strong>。</p>
+<table>
+<thead><tr><th>軸</th><th>eason（台股實戰）</th><th>yutinghao（總經由上而下）</th></tr></thead>
+<tbody>
+<tr><td><code>channels.yaml</code> id</td><td><code>eason</code></td><td><code>yutinghao</code>（原本 disabled，2026-05-20 啟用）</td></tr>
+<tr><td><code>pipelines/&lt;id&gt;.yaml</code></td><td><code>eason.yaml</code></td><td><code>yutinghao.yaml</code></td></tr>
+<tr><td><code>prompts/&lt;id&gt;/</code></td><td><code>main, framework, voice, persistence, transcript, picks, digest, judge-rubric</code> + <code>report.css</code></td><td><code>main, framework, voice, transcript, digest</code></td></tr>
+<tr><td><code>allowed_tools</code></td><td>15 個（含 5 個 TWSE + sqlite 三支）</td><td>9 個（無 sqlite，只 2 個 TWSE）</td></tr>
+<tr><td><code>post.picks</code></td><td>有（Haiku 萃取個股 → eason_picks）</td><td>無（總經派不選股）</td></tr>
+<tr><td><code>quality_judge</code></td><td>有（載入但 runner 目前未消費）</td><td>無</td></tr>
+<tr><td><code>quality_sections</code></td><td>指標儀表板 / 邏輯鏈 / 今日語錄 / 風險提示 / 報告總結</td><td>市場快照 / 總經觀點 / 關鍵數據 / 風險 / 報告總結</td></tr>
+<tr><td>寫入 DB</td><td><code>eason_training</code> + <code>eason_daily</code> + <code>eason_picks</code></td><td><strong>不寫</strong>（無持久化）</td></tr>
+<tr><td>報告風格</td><td>個股級、由下而上、偏多選股</td><td>總經級、由上而下、中性偏謹慎、不選股</td></tr>
+</tbody>
+</table>
+<p><code>schema.ts</code> 已把 <code>post.picks</code> / <code>quality_judge</code> 改成可選、<code>allowed_tools</code> 改成必填，所以 yutinghao 缺項合法。</p>
+
+<hr>
+
+<h2 id="sec-3">3. 兩趟式（Two-Pass）— 為什麼要這樣設計</h2>
+
+<h3>3.1 為什麼分兩趟</h3>
+<p>歷史上（FU-4）試過「一趟，把整份清乾淨的逐字稿當 MCP 工具結果整包丟給分析模型」—— 5.9 萬字超過模型對單一 MCP 工具結果能可靠消化的上限，而中段省略會破壞分析需要的連續引用 → 信心值只有 4.5/10、沒有真實選股。</p>
+<p>FU-5 的解法是「<strong>先用一個專責的 Sonnet 把整份逐字稿分頁讀完，寫成小而忠實的摘要；主分析只讀那份摘要</strong>」—— 信心值從 4.5 升到 7.5，引用、選股、報告段落都恢復。</p>
+
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant R as runPipeline
+  participant D as Pass-1 Sonnet<br/>(digestPass)
+  participant Y as yt-dlp MCP
+  participant FS as runs/&lt;id&gt;/
+  participant A as Pass-2 Sonnet<br/>(runClaude)
+  participant M as TWSE/Yahoo/FRED MCP
+  participant S as sqlite MCP
+
+  R->>D: 啟動,只給 yt-dlp+Write+Read 工具
+  D->>Y: ytdlp_search_videos(channel.search_query)
+  Y-->>D: 影片清單
+  loop 逐頁直到 page == total_pages-1
+    D->>Y: ytdlp_transcript_page(url, page=n, size=12000)
+    Y-->>D: 一頁清乾淨的逐字稿
+  end
+  D->>FS: Write transcript-digest.md (5~10KB)
+  D-->>R: digest 完成
+
+  R->>A: 啟動,給完整 allowed_tools<br/>prompt 含 ${TRANSCRIPT_DIGEST}
+  A->>FS: Read transcript-digest.md (小、易消化)
+  par 同時拉真實數據
+    A->>M: twse/yahoo/fred MCP 呼叫
+    M-->>A: TAIEX/外資/^SOX/T10Y2Y...
+  and Eason 才有
+    A->>S: mcp__sqlite__create_record<br/>(eason_training/daily)
+  end
+  A->>FS: Write report.html
+  A-->>R: 分析完成
+</pre>
+
+<h3>3.2 兩趟契約（prompt 角色分工）</h3>
+<ul>
+<li><code>prompts/&lt;id&gt;/digest.md</code> —— Pass-1 拿到。指示：<code>ytdlp_search_videos</code> → 逐頁 <code>ytdlp_transcript_page</code> → 用嚴格 schema <code>Write</code> 到 <code>${TRANSCRIPT_DIGEST}</code>，<strong>寧可漏、嚴禁臆測</strong>、原話必須逐字、<code>source=none</code> 也要寫出檔案。本輪只准 yt-dlp + Write/Read。</li>
+<li><code>prompts/&lt;id&gt;/transcript.md</code> —— Pass-2 references。指示：<strong>禁止</strong>呼叫 yt-dlp，用 <code>Read</code> 讀 <code>${TRANSCRIPT_DIGEST}</code>，摘要 = 權威逐字稿依據。</li>
+<li><code>prompts/&lt;id&gt;/main.md</code> —— Pass-2 主 template。產出 HTML 報告結構、寫作鐵則、強制段落清單。</li>
+<li><code>prompts/&lt;id&gt;/framework.md</code> / <code>voice.md</code> —— 該分析師的分析框架（Eason：5 層籌碼；游庭皓：top-down 總經）與語氣規範。</li>
+<li><code>prompts/eason/persistence.md</code>（只 Eason 有）—— 指示模型何時呼叫 <code>mcp__sqlite__create_record</code> 寫進 eason_training / eason_daily（這就是「持久化在分析回合內」的原因）。</li>
+<li><code>prompts/eason/picks.md</code>（只 Eason 有，給後處理 Haiku 用）—— 讀已產出的 <code>report.html</code> 萃取個股 → 寫 <code>eason_picks</code>。</li>
+</ul>
+
+<hr>
+
+<h2 id="sec-4">4. Runner 的 4 個可觀測階段 + 進度回報</h2>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> pending
+  pending --> running: setProgress({digest:running})
+  running --> done: digestPass() 成功
+  running --> error: ClaudeRunError(digest)
+  done --> running_a: setProgress({analysis:running})
+  running_a --> done_a: runClaude() 成功
+  running_a --> error_a: ClaudeRunError(runClaude)
+  done_a --> running_p: setProgress({postprocess:running})
+  running_p --> done_p: postProcess() 完成<br/>(PDF/notify/picks)
+  running_p --> error_p: 例外(postProcess)
+  done_p --> running_q: setProgress({quality:running})
+  running_q --> done_q: mechanicalChecks() 完
+  done_q --> [*]: status:succeeded
+</pre>
+<p><strong>每個轉換</strong>都 <code>updateRun(o.runsRoot, runId, { progress: { ...progress } })</code> —— 把完整 progress 物件（shallow-merge 限制）寫進 <code>run.json</code>，所以 <code>/api/runs/[id]</code> 一抓出來，前端就拿得到即時狀態。</p>
+<p><strong>節點對應</strong>（<code>nodeRunStatus</code>）：</p>
+<ul>
+<li><code>digest / analysis / postprocess / quality</code> → 直接讀 <code>progress[id]</code>（<code>pending|running|done|error|skipped</code>）</li>
+<li><code>channels</code> → 永遠 neutral（設定不是執行步驟）</li>
+<li><code>persistence</code> → <strong>衍生</strong>：run <code>status === succeeded</code> 才標 done，否則 pending（因為持久化發生在 Pass-2 claude turn 內部，runner 看不見那一刻 —— 這是已記錄的誠實限制）</li>
+</ul>
+
+<hr>
+
+<h2 id="sec-5">5. 五個 MCP 資料外掛（Pass-2 的數據扇入）</h2>
+<pre class="mermaid">
+flowchart LR
+  subgraph CFG["studio/mcp/mcp.json (rendered)"]
+    YT["yt-dlp"]
+    TW["twse"]
+    YH["yahoo-finance"]
+    FR["fred (env FRED_API_KEY)"]
+    SQ["sqlite (env STUDIO_DB_PATH)"]
+  end
+
+  YT -. "Pass-1 (限縮)" .-> P1["Pass-1 Sonnet"]
+  YT -- "ytdlp_search_videos (Pass-2 找今日片)" --> P2["Pass-2 Sonnet (主分析)"]
+  TW -- "TAIEX / 外資 / 融資 / 個股日線" --> P2
+  YH -- "^SOX / ^IXIC / 2330.TW / 期貨..." --> P2
+  FR -- "T10Y2Y / CPI / NFP / Fed funds..." --> P2
+  SQ -. "Eason 才用" .-> P2
+</pre>
+<p>每個 server 是一隻獨立的 Python FastMCP（<code>studio/mcp/servers/*.py</code>），由 <code>claude -p --mcp-config studio/mcp/mcp.json --strict-mcp-config --allowedTools …</code> 啟動。</p>
+<ul>
+<li><code>@PY@</code> = <code>studio/mcp/.venv/bin/python</code></li>
+<li><code>@FREDKEY@</code> = 從繼承工具的 <code>financial-report-system/scripts/.env</code> 取</li>
+<li><code>@DBPATH@</code> = <code>financial-report-system/data/financial.db</code></li>
+<li><code>--allowedTools</code> 限縮成該 pipeline 的 <code>allowed_tools</code> 子集（yutinghao 沒有 sqlite，Pass-1 又再縮成只 yt-dlp+Write+Read）</li>
+</ul>
+
+<hr>
+
+<h2 id="sec-6">6. 設定載入鏈（channel → pipeline → prompts）</h2>
+<pre class="mermaid">
+flowchart LR
+  ch["channels.yaml"]
+  py["pipelines/&lt;p&gt;.yaml"]
+  pr["prompts/&lt;p&gt;/*.md"]
+  lc["loadConfig(channelId)"]
+  cfg["LoadedConfig:<br/>channel + pipeline +<br/>promptTemplate + references[] +<br/>picksPrompt? + digestPrompt? +<br/>qualitySections + judgeRubric?"]
+
+  ch -- "find by id, 驗證 enabled" --> lc
+  py -- "依 channel.pipeline 載入,zod 驗證" --> lc
+  pr -- "依 pipeline.prompt.{template, references}, post.picks?.prompt, digest?.prompt 讀入" --> lc
+  lc --> cfg
+</pre>
+<ul>
+<li><strong>schema 強制</strong>：<code>allowed_tools</code> 必填非空；<code>post.picks</code> / <code>quality_judge</code> / <code>digest</code> 可選。</li>
+<li><strong><code>pipelineStore</code>（canvas 側欄編輯用）</strong>：可寫入的 pipeline 名單從 <code>channels.yaml</code> 推導（任何 channel 引用的 pipeline 都能編）—— 不再寫死 <code>{"eason"}</code>。</li>
+<li><strong>零 TS 擴充</strong>：加新分析師 = 新增 channels.yaml 一筆 + <code>pipelines/&lt;新&gt;.yaml</code> + <code>prompts/&lt;新&gt;/*</code>，<strong>lib/app/components 不用改任何一行</strong>（已實證 grep = 0）。</li>
+</ul>
+
+<hr>
+
+<h2 id="sec-7">7. Prompt 模板代換 conventions</h2>
+<p><code>buildPrompt()</code> 對 prompt 文字統一做以下代換：</p>
+<table>
+<thead><tr><th>Token</th><th>來源</th></tr></thead>
+<tbody>
+<tr><td><code>{{calendar}}</code></td><td><code>calendarFacts(now).text</code>（今日日期+星期，Pass-2 注入）</td></tr>
+<tr><td><code>{{report_css}}</code></td><td><code>prompts/eason/report.css</code> 內容（Pass-2 注入）</td></tr>
+<tr><td><code>{{channel.handle}}</code> / <code>{{channel.name}}</code> / <code>{{channel.search_query}}</code></td><td>該 channel 設定</td></tr>
+<tr><td><code>${HTML_FILE}</code></td><td><code>runs/&lt;id&gt;/report.html</code> 絕對路徑</td></tr>
+<tr><td><code>${DATE}</code></td><td><code>cal.iso</code>（YYYY-MM-DD）</td></tr>
+<tr><td><code>${LOG_FILE}</code></td><td><code>runs/&lt;id&gt;/claude.log</code></td></tr>
+<tr><td><code>${TRANSCRIPT_DIGEST}</code></td><td><code>runs/&lt;id&gt;/transcript-digest.md</code>（兩趟式契約的核心）</td></tr>
+</tbody>
+</table>
+<p>picks prompt 同樣經 <code>buildPrompt</code> —— 不然 <code>${HTML_FILE}</code> 會以字面傳給 Haiku，寫不進 eason_picks（這就是 FU-6 修的 bug）。</p>
+
+<hr>
+
+<h2 id="sec-8">8. 持久化：Eason 三張表 vs 游庭皓 0 張表</h2>
+<pre class="mermaid">
+flowchart TB
+  A["Pass-2 主分析<br/>(只 Eason)"]
+  P["prompts/eason/persistence.md<br/>(references,inline 到 prompt)"]
+  S["mcp__sqlite__create_record"]
+  ET[("eason_training<br/>每支影片一筆訓練樣本<br/>(立場/指標/個股/邏輯鏈/...)" )]
+  ED[("eason_daily<br/>每日觀點存檔<br/>(四大支柱/信心/key_levels/...)")]
+  EP[("eason_picks<br/>個股推薦/出場追蹤<br/>(ticker/方向/category/return_pct)")]
+  H["後處理:claude -p picks.md (Haiku)<br/>讀 report.html 萃取個股"]
+
+  A -. "依 persistence.md 指示" .-> S
+  P -.-> A
+  S --> ET
+  S --> ED
+  A --> RH["report.html"]
+  RH --> H
+  H --> EP
+</pre>
+<p>去重規則寫在 prompts：同一 <code>video_id</code> 不重複寫 <code>eason_training</code>；<code>(ticker, pick_date)</code> 已存在就跳過 picks。</p>
+<p>游庭皓沒有 <code>post.picks</code> 也沒有 <code>persistence.md</code> reference → runner 跳過後處理 picks 步驟，模型也不會去呼叫 sqlite（<code>allowed_tools</code> 本來就沒給 sqlite）。</p>
+
+<hr>
+
+<h2 id="sec-9">9. 一個 run dir 長什麼樣</h2>
+<pre><code>studio/runs/2026-05-19T19-18-39-101Z_yutinghao/
+├── run.json              ← 狀態機：status / progress / qualityOk / error / pid / configSnapshot
+├── transcript-digest.md  ← Pass-1 產出（小、忠實、有逐字原話）  5~10KB 典型
+├── digest.log            ← Pass-1 claude -p 的 stdout/stderr
+├── claude.log            ← Pass-2 claude -p 的 stdout/stderr（失敗時偵錯關鍵）
+├── report.html           ← Pass-2 寫的最終報告（21~29KB 典型）
+└── report.pdf            ← postProcess 用 headless Chrome 轉的（1.5~2MB）</code></pre>
+<p><code>runs/</code> 是 gitignored；<code>_e2e*.log</code> / <code>_fu*_launch.log</code> 這類舊 ad-hoc 殘留會被 <code>isRunId</code> 過濾掉、不會被 <code>/api/runs</code> 列出。</p>
+
+<hr>
+
+<h2 id="sec-10">10. 畫布側的整條鏈（按 Run → 節點上色）</h2>
+<pre class="mermaid">
+sequenceDiagram
+  participant U as 你(瀏覽器)
+  participant RB as RunBar
+  participant API as Next /api/runs
+  participant R as runPipeline
+  participant FS as runs/&lt;id&gt;/run.json
+
+  U->>RB: 選分析師 + 按 Run
+  RB->>API: POST {channelId}
+  API->>API: loadConfig → allowed_tools<br/>renderMcpConfig (best-effort)
+  API->>R: fire-and-forget runPipeline(channelId, {mcpConfigPath, allowedTools, ...})
+  API-->>RB: {started:true}
+  loop 每 4 秒(僅 newest=running/pending 時)
+    RB->>API: GET /api/runs → newest ids
+    RB->>API: GET /api/runs/&lt;newest&gt; → progress
+    Note over R,FS: runner 每階段都 setProgress() → 即時寫 run.json
+    R->>FS: progress.digest:done<br/>progress.analysis:running ...
+    API-->>RB: { status, progress }
+    RB->>U: 4 個節點依 progress 上色<br/>(摘要→分析→後處理→品質)
+  end
+</pre>
+<p><code>持久化</code> 節點是衍生的（succeeded 才綠），不參與這條輪詢上色 —— 這是 v1 cosmetic limitation，有意保留。</p>
+
+<hr>
+
+<h2 id="sec-11">11. 已知限制與未做事項（誠實）</h2>
+<ul>
+<li><strong><code>/api/runs</code> POST 渲染 mcp.json 是 best-effort</strong>：<code>.env</code> 找不到、venv 缺、權限問題 → 不會 crash route，但 run 會用「無 MCP」模式跑，品質退化。這是刻意的優雅退化。</li>
+<li><strong><code>持久化</code> 畫布節點 = 衍生</strong>：runner 看不進單一 claude turn 內部，所以無法即時顯示「持久化跑中」；v1 接受這個限制。</li>
+<li><strong><code>quality_judge.rubric</code> 載入後 runner 沒消費</strong>：品質檢查目前是純機械的 <code>mechanicalChecks(quality_sections)</code>，judge rubric 是預留欄位。</li>
+<li><strong>游庭皓 <code>main.md</code> 仍以 <code>/eason-analysis</code> 開頭</strong>（從 Eason 模板複製）：<strong>有效</strong>（他的 5 段都產出來了），但繼承工具有更貼他總經風格的 <code>macro-analysis</code> skill —— 換過去是品質微調候選，不是 bug。</li>
+<li><strong>沒有「組合 briefing」</strong>（游庭皓 + Eason 共識/分歧）—— 是下一個獨立 FU，先單獨各自跑通是刻意的順序。</li>
+<li><strong>Discord/LINE 通知 OFF</strong>（<code>post.notify: false</code>）—— 自始未開，你最初要求略過。<code>runs/&lt;id&gt;/</code> 目前沒有對外推播。</li>
+<li><strong>transient 失敗會發生</strong>：長時 <code>claude -p</code> 偶爾因網路抖動掛掉（<code>API Error: socket connection closed</code>），runner 會正確標記 <code>status:failed, progress.analysis:error</code>，但<strong>修法是重跑、不是改程式</strong>。</li>
+</ul>
+
+<hr>
+
+<h2 id="sec-12">12. 一行版索引（配對到程式碼）</h2>
+<table>
+<thead><tr><th>文件</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>studio/app/page.tsx</code></td><td>畫布主頁（ReactFlow 6 節點 + RunBar + SidePanel）</td></tr>
+<tr><td><code>studio/components/canvas/RunBar.tsx</code></td><td>分析師下拉 + Run + 4s 輪詢 + onActive</td></tr>
+<tr><td><code>studio/components/canvas/StageNode.tsx</code></td><td>6 節點外觀，依 <code>data.runStatus</code> 上色</td></tr>
+<tr><td><code>studio/app/canvas/nodes.ts</code></td><td>6 節點靜態模型 + <code>nodeRunStatus()</code>（純函式）</td></tr>
+<tr><td><code>studio/app/api/runs/route.ts</code></td><td>POST 載入 pipeline allowedTools + 渲染 mcp.json + fire-and-forget runPipeline；GET 過濾 isRunId</td></tr>
+<tr><td><code>studio/app/api/runs/[id]/route.ts</code></td><td>回完整 <code>run.json</code></td></tr>
+<tr><td><code>studio/app/api/channels/route.ts</code></td><td>GET/PUT <code>channels.yaml</code>（zod）</td></tr>
+<tr><td><code>studio/app/api/pipeline/[name]/route.ts</code></td><td>GET/PUT <code>pipelines/&lt;name&gt;.yaml</code>（allow-list 從 channels.yaml 推導）</td></tr>
+<tr><td><code>studio/app/api/prompts/route.ts</code></td><td>GET/PUT 白名單路徑下的 prompt 檔</td></tr>
+<tr><td><code>studio/lib/runner/runPipeline.ts</code></td><td>主編排，4 階段 progress，catch 映射</td></tr>
+<tr><td><code>studio/lib/runner/digestPass.ts</code></td><td>Pass-1 包裝，reducer 工具集到 yt-dlp+Write+Read</td></tr>
+<tr><td><code>studio/lib/runner/runClaude.ts</code></td><td>唯一 <code>claude -p</code> 構造點（安全縫）</td></tr>
+<tr><td><code>studio/lib/runner/postProcess.ts</code></td><td>Chrome PDF / notify / picks（條件式）</td></tr>
+<tr><td><code>studio/lib/runner/allowedTools.ts</code></td><td><code>pipelineAllowedTools</code> + <code>digestAllowedTools</code></td></tr>
+<tr><td><code>studio/lib/runner/mcpConfig.ts</code></td><td>渲染 <code>mcp.json</code> 模板（注入 FRED key/路徑）</td></tr>
+<tr><td><code>studio/lib/runner/runRecord.ts</code></td><td>run.json 讀寫 + StepState/RunProgress 型別 + <code>isRunId</code></td></tr>
+<tr><td><code>studio/lib/quality/check.ts</code></td><td><code>mechanicalChecks(html, qualitySections)</code></td></tr>
+<tr><td><code>studio/lib/config/{schema,load,promptPaths,promptStore,pipelineStore}.ts</code></td><td>設定/prompt 安全讀寫 + zod</td></tr>
+<tr><td><code>studio/mcp/servers/*.py</code></td><td>5 個 Python MCP server</td></tr>
+<tr><td><code>studio/config/channels.yaml</code></td><td>分析師清單</td></tr>
+<tr><td><code>studio/config/pipelines/{eason,yutinghao}.yaml</code></td><td>各 pipeline 設定</td></tr>
+<tr><td><code>studio/prompts/{eason,yutinghao}/*.md</code></td><td>各 pipeline 的 prompts</td></tr>
+<tr><td><code>financial-report-system/data/financial.db</code></td><td>SQLite，3 張 eason_* 表</td></tr>
+</tbody>
+</table>
+
+</main>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { curve: 'basis' },
+    themeVariables: {
+      darkMode: true,
+      background: '#161b22',
+      primaryColor: '#1f2937',
+      primaryTextColor: '#e5e7eb',
+      primaryBorderColor: '#374151',
+      lineColor: '#9ca3af',
+      fontFamily: 'inherit'
+    }
+  });
+</script>
+</body>
+</html>
