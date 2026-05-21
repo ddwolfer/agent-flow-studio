@@ -3,9 +3,9 @@ from mcp.server.fastmcp import FastMCP
 import sys, pathlib as _pl, os, re, tempfile, shutil
 sys.path.insert(0, str(_pl.Path(__file__).parents[1] / "lib"))
 try:
-    import gemma_transcribe as _gemma
+    import whisper_transcribe as _asr
 except Exception:
-    _gemma = None
+    _asr = None
 
 # ── transcript size guard ──────────────────────────────────────────────────────
 _MAX_CHARS = int(os.environ.get("STUDIO_TRANSCRIPT_MAX_CHARS", "48000"))
@@ -132,7 +132,7 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
 def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
     """Fetch + clean the FULL transcript once per video_url (cached). No truncation.
 
-    Returns {"source": "captions"|"gemma4:e4b"|"none", "text": str}.
+    Returns {"source": "captions"|"whisper"|"none", "text": str}.
     """
     cached = _TRANSCRIPT_CACHE.get(video_url)
     if cached is not None:
@@ -140,10 +140,9 @@ def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
     result = {"source": "none", "text": ""}
     errors = []
     # 1) Try captions. A caption-fetch FAILURE (e.g. YouTube rate-limit / 503 raised
-    #    inside extract_info) must NOT abort the gemma fallback — so it gets its own
-    #    try block. (Bug fix: previously a captions exception jumped to the outer
-    #    except and the gemma `elif` branch was never reached → @BTV_CN showed
-    #    "transcription error" instead of falling back to audio transcription.)
+    #    inside extract_info) must NOT abort the whisper fallback — so it gets its
+    #    own try block. (Previously a captions exception jumped to the outer except
+    #    and the fallback branch was never reached.)
     raw = None
     try:
         raw = _fetch_captions(video_url, [language, "zh-TW", "zh-Hant", "zh", "en"])
@@ -151,16 +150,16 @@ def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
         errors.append(f"captions: {e}")
     if raw:
         result = {"source": "captions", "text": _clean_transcript(raw)}
-    elif _gemma is not None:
-        # 2) Audio fallback: download audio + transcribe locally via gemma4:e4b.
+    elif _asr is not None:
+        # 2) Audio fallback: download audio + transcribe locally via faster-whisper.
         try:
-            t = _gemma.transcribe(video_url)
+            t = _asr.transcribe(video_url)
             if t and t.strip():
-                result = {"source": "gemma4:e4b", "text": _clean_transcript(t)}
+                result = {"source": "whisper", "text": _clean_transcript(t)}
             else:
-                errors.append("gemma: empty transcript")
+                errors.append("whisper: empty transcript")
         except Exception as e:
-            errors.append(f"gemma: {e}")
+            errors.append(f"whisper: {e}")
     if result["source"] == "none" and errors:
         result["error"] = "transcript failed: " + "; ".join(errors)
     # Cache key is video_url only; assumes a consistent language per URL within a session.
@@ -215,7 +214,7 @@ def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
     Return the cleaned, bounded transcript text inline.
 
     Result shape: {source, text, full_chars, truncated}
-    - source: "captions" | "gemma4:e4b" | "none"
+    - source: "captions" | "whisper" | "none"
     - text: cleaned plain text (VTT markup stripped, consecutive dups removed);
             if truncated=True, contains head + "[...middle elided N chars...]" + tail
     - full_chars: character count of the fully cleaned text (before any elision)
@@ -229,12 +228,12 @@ def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
             cleaned = _clean_transcript(raw)
             bounded = _bound_transcript(cleaned)
             return {"source": "captions", **bounded}
-        if _gemma is not None:
-            text = _gemma.transcribe(video_url)
+        if _asr is not None:
+            text = _asr.transcribe(video_url)
             if text and text.strip():
                 cleaned = _clean_transcript(text)
                 bounded = _bound_transcript(cleaned)
-                return {"source": "gemma4:e4b", **bounded}
+                return {"source": "whisper", **bounded}
     except Exception as e:
         return {"source": "none", "text": "", "full_chars": 0, "truncated": False,
                 "error": f"transcript failed: {e}"}
@@ -251,7 +250,7 @@ def ytdlp_transcript_page(video_url: str, page: int = 0,
     tool result. Page through 0..total_pages-1 to read the entire transcript.
 
     Result: {source, page, total_pages, full_chars, text}
-      - source: "captions" | "gemma4:e4b" | "none"
+      - source: "captions" | "whisper" | "none"
       - total_pages: number of pages of size page_size (0 if no transcript)
       - full_chars: length of the full cleaned transcript
       - text: the requested page slice ("" if page is out of range)

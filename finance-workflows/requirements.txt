@@ -11,4 +11,8 @@ yfinance>=1.3,<2
 # curl_cffi 0.x is pre-1.0 — minor versions can be breaking. Allow 0.15+ but
 # block jumps past 0.x major to keep yfinance compat predictable.
 curl_cffi>=0.15,<1
+# Local ASR for caption-less YouTube audio (replaces the ollama/gemma path,
+# which silently ignored audio on the OpenAI-compat endpoint — see commit
+# swapping gemma_transcribe → whisper_transcribe). CPU int8, auto language.
+faster-whisper>=1.0
 pytest>=8.0
