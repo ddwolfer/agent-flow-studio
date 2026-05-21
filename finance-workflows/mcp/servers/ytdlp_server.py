@@ -180,19 +180,26 @@ def ytdlp_search_videos(query: str, maxResults: int = 1, uploadDateFilter: str =
 
 @mcp.tool()
 def ytdlp_latest_from_channel(handle: str, max_results: int = 5):
-    """Fetch the latest videos from a YouTube channel handle (e.g. '@crypto_punks').
+    """Fetch the latest videos from a YouTube channel by handle OR channel-ID.
+
+    `handle` accepts either:
+      - a handle like '@crypto_punks' (or 'crypto_punks'), → /@handle/videos
+      - a permanent channel ID like 'UCRvqjQPSeaWn-uEx-w0XOIg', → /channel/<id>/videos
+        (use the channel ID when a handle 404s or changes — IDs are permanent).
 
     Hits the channel's /videos page directly via extract_flat — more reliable than
-    `ytdlp_search_videos` for finding a specific channel's recent uploads (the keyword
-    search can return unrelated channels when the handle name isn't unique).
+    `ytdlp_search_videos` for a specific channel's recent uploads (keyword search can
+    return unrelated channels when the handle name isn't unique).
 
-    Returns [{video_id, title, upload_date, url}] in chronological order (newest first
-    as returned by YouTube). Never raises — returns [] on any failure.
+    Returns [{video_id, title, upload_date, url}] newest-first. Never raises → [] on failure.
     """
-    h = (handle or "").lstrip("@")
+    h = (handle or "").strip().lstrip("@")
     if not h:
         return []
-    url = f"https://www.youtube.com/@{h}/videos"
+    if re.fullmatch(r"UC[0-9A-Za-z_-]{20,}", h):
+        url = f"https://www.youtube.com/channel/{h}/videos"
+    else:
+        url = f"https://www.youtube.com/@{h}/videos"
     try:
         opts = {"quiet": True, "extract_flat": True,
                 "playlistend": max(int(max_results), 1)}

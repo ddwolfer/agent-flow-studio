@@ -3,10 +3,13 @@
   "name": "crypto-daily",
   "description": "Daily crypto + crypto-adjacent macro briefing",
   "model": "claude-sonnet-4-6",
-  "max_turns": 60,
+  "max_turns": 90,
   "sources": [
-    { "kind": "youtube", "handle": "@crypto_punks", "search_query": "crypto_punks" },
-    { "kind": "youtube", "handle": "@BTV_CN", "search_query": "BTV_CN" },
+    { "kind": "youtube", "name": "加密龐克", "handle": "@crypto_punks", "search_query": "crypto_punks" },
+    { "kind": "youtube", "name": "BTV", "handle": "@BTV_CN", "search_query": "BTV_CN" },
+    { "kind": "youtube", "name": "Altcoin Daily", "handle": "@AltcoinDaily", "search_query": "Altcoin Daily" },
+    { "kind": "youtube", "name": "Coin Bureau", "handle": "@CoinBureau", "search_query": "Coin Bureau" },
+    { "kind": "youtube", "name": "Benjamin Cowen (Into The Cryptoverse)", "handle": "UCRvqjQPSeaWn-uEx-w0XOIg", "search_query": "Benjamin Cowen Into The Cryptoverse" },
     { "kind": "web", "name": "zombit", "url": "https://zombit.info/", "rss": "https://zombit.info/feed/" }
   ],
   "tools": ["yt-dlp", "rss", "web-fetch"],

@@ -42,6 +42,18 @@ def test_latest_from_channel_hits_videos_url_and_maps_entries(monkeypatch):
                       "upload_date": "2026-05-21", "url": "https://youtu.be/AAA"}
 
 
+def test_channel_id_builds_channel_url(monkeypatch):
+    m = _load()
+    _FakeYDL.extract_info_return = {"entries": [
+        {"id": "C", "title": "Cowen vid", "upload_date": "20260521",
+         "webpage_url": "https://youtu.be/C"}
+    ]}
+    monkeypatch.setattr(m, "yt_dlp", type("X", (), {"YoutubeDL": _FakeYDL})())
+    out = m.ytdlp_latest_from_channel("UCRvqjQPSeaWn-uEx-w0XOIg", max_results=1)
+    assert _FakeYDL.last_url == "https://www.youtube.com/channel/UCRvqjQPSeaWn-uEx-w0XOIg/videos"
+    assert out[0]["video_id"] == "C"
+
+
 def test_handle_without_at_prefix_works(monkeypatch):
     m = _load()
     _FakeYDL.extract_info_return = {"entries": [
