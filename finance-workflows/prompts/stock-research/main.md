@@ -49,16 +49,33 @@ D. **依 framework.md 的 7 層**寫出該股的研究段落:
 
 ```
 <h1>個股深度研究 — ${DATE}</h1>
-<p class="disclaimer">本報告基於公開免費資料(Yahoo Finance + FRED + 公司 IR),非機構級 due diligence。投資決策請自負風險。</p>
+<p class="disclaimer">本報告基於公開免費資料(Yahoo Finance + FRED + SEC EDGAR),非機構級 due diligence。投資決策請自負風險。</p>
+
+<!-- 置頂可點目錄(必做):每檔股票 + 總經 + 整體市場各一個錨點連結。
+     建議 sticky 固定在頂部,方便長報告快速跳轉。
+     錨點必須對應下方 section 的 id(#macro-context / #ticker-<TICKER> / #overall)。 -->
+<nav class="toc">
+  <strong>目錄</strong>
+  <a href="#macro-context">總經背景</a>
+  <a href="#ticker-NVDA">NVDA</a>
+  <a href="#ticker-TSM">TSM</a>
+  <a href="#ticker-AAPL">AAPL</a>
+  <a href="#ticker-MSFT">MSFT</a>
+  <a href="#overall">整體市場 view</a>
+  <!-- 依實際 watchlist 動態產生;每檔一個連結,文字用 ticker -->
+</nav>
 
 <section id="macro-context">
   <h2>總經背景</h2>
   -- 第一階段的 4 個 FRED 數據,當下水位 + 一句話總結
 </section>
 
-<!-- 對 watchlist 每一檔重複以下 section,順序依 watchlist 順序 -->
+<!-- 對 watchlist 每一檔重複以下 section,順序依 watchlist 順序。
+     每檔包成 <details open> 讓使用者可折疊;<summary> 放標題+一句話結論(方向+信心),
+     方便先掃 summary 再展開細節。錨點 id 固定為 ticker-<TICKER>。 -->
 <section id="ticker-NVDA">
-  <h2>NVDA — NVIDIA Corporation</h2>
+  <details open>
+  <summary><h2 style="display:inline">NVDA — NVIDIA Corporation</h2> ｜ 中性偏多 ｜ 信心 6/10</summary>
   <h3>1. 公司概覽</h3>
   ...
   <h3>2. 產品 / 業務分析</h3>
@@ -83,6 +100,7 @@ D. **依 framework.md 的 7 層**寫出該股的研究段落:
       <ul>...</ul>
     </li>
   </ul>
+  </details>
 </section>
 
 <section id="overall">
@@ -91,8 +109,13 @@ D. **依 framework.md 的 7 層**寫出該股的研究段落:
 </section>
 ```
 
+## HTML / CSS 規範
+- **置頂可點目錄(`<nav class="toc">`)必做**,錨點對應每個 section 的 id。建議 CSS `position: sticky; top: 0`,讓捲動時目錄一直可見、隨點隨跳。
+- **每檔股票包在 `<details open><summary>…</summary>…</details>`**,summary 顯示「ticker — 公司名 ｜ 方向 ｜ 信心」,使用者可一鍵折疊不想看的股票、只展開要看的。
+- `<summary>` 內的 `<h2>` 用 `display:inline` 才不會被 details 三角形擠到換行。
+- 用乾淨的 inline CSS(`<style>` 區塊放 `<head>` 或 body 開頭);錨點跳轉加 `scroll-margin-top` 避免被 sticky 目錄擋住標題。不要寫 broken markup。
+
 ## 嚴格規則
 - faithfulness.md 鐵則優先,違反即任務失敗。
 - 對任一檔股票,若 Yahoo `get_stock_info` 都連不到,在該股的 section 標註「資料不可用,本次跳過」**並繼續其餘股票**,不要因此放棄整份報告。
-- HTML 用乾淨的 inline CSS(可以參考表格樣式、深色背景或淺色背景隨你)。不要寫 broken markup。
 - 完成 `Write` 後即結束。
