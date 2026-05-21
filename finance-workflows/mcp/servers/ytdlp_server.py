@@ -138,16 +138,31 @@ def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
     if cached is not None:
         return cached
     result = {"source": "none", "text": ""}
+    errors = []
+    # 1) Try captions. A caption-fetch FAILURE (e.g. YouTube rate-limit / 503 raised
+    #    inside extract_info) must NOT abort the gemma fallback — so it gets its own
+    #    try block. (Bug fix: previously a captions exception jumped to the outer
+    #    except and the gemma `elif` branch was never reached → @BTV_CN showed
+    #    "transcription error" instead of falling back to audio transcription.)
+    raw = None
     try:
         raw = _fetch_captions(video_url, [language, "zh-TW", "zh-Hant", "zh", "en"])
-        if raw:
-            result = {"source": "captions", "text": _clean_transcript(raw)}
-        elif _gemma is not None:
+    except Exception as e:
+        errors.append(f"captions: {e}")
+    if raw:
+        result = {"source": "captions", "text": _clean_transcript(raw)}
+    elif _gemma is not None:
+        # 2) Audio fallback: download audio + transcribe locally via gemma4:e4b.
+        try:
             t = _gemma.transcribe(video_url)
             if t and t.strip():
                 result = {"source": "gemma4:e4b", "text": _clean_transcript(t)}
-    except Exception as e:
-        result = {"source": "none", "text": "", "error": f"transcript failed: {e}"}
+            else:
+                errors.append("gemma: empty transcript")
+        except Exception as e:
+            errors.append(f"gemma: {e}")
+    if result["source"] == "none" and errors:
+        result["error"] = "transcript failed: " + "; ".join(errors)
     # Cache key is video_url only; assumes a consistent language per URL within a session.
     _TRANSCRIPT_CACHE[video_url] = result
     return result
