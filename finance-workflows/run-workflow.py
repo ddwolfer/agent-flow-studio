@@ -40,25 +40,33 @@ TOOL_MAP = {
 }
 
 
-def _load_env_subs(root):
-    """Read FRED_API_KEY (and any other @KEY@ env subs) from the inherited
-    .env file or current process env. Returns a dict suitable for render_mcp's
-    `env_subs=` kwarg; missing values are simply omitted (template's @KEY@ stays
-    literal — see render_mcp docstring)."""
-    subs = {}
-    # 1) process env wins
-    if os.environ.get("FRED_API_KEY"):
-        subs["FREDKEY"] = os.environ["FRED_API_KEY"]
-        return subs
-    # 2) fall back to the inherited tool's .env
-    env_file = root / ".." / "financial-report-system" / "scripts" / ".env"
+def _load_dotenv(root):
+    """Load finance-workflows/.env into os.environ (existing env wins, so the
+    shell/cron can still override). This makes secrets like GROQ_API_KEY and
+    FRED_API_KEY available to the child `claude` process and the MCP servers it
+    spawns. Self-contained: no dependency on the legacy financial-report-system
+    folder, so it can be deleted independently."""
+    env_file = root / ".env"
     try:
         for line in env_file.read_text("utf-8").splitlines():
-            if line.startswith("FRED_API_KEY="):
-                subs["FREDKEY"] = line.split("=", 1)[1].strip()
-                break
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if k and k not in os.environ:
+                os.environ[k] = v
     except FileNotFoundError:
         pass
+
+
+def _load_env_subs(root):
+    """FRED_API_KEY → render_mcp's @FREDKEY@ template sub. Reads from os.environ
+    (populated by _load_dotenv); missing value is simply omitted (template's
+    @KEY@ stays literal — see render_mcp docstring)."""
+    subs = {}
+    if os.environ.get("FRED_API_KEY"):
+        subs["FREDKEY"] = os.environ["FRED_API_KEY"]
     return subs
 
 
@@ -87,6 +95,7 @@ def main(argv=None):
     ap.add_argument("name", help="workflow name (workflows/<name>.json)")
     args = ap.parse_args(argv)
     root = _resolve_root()
+    _load_dotenv(root)
 
     try:
         cfg = load_workflow(args.name, root)

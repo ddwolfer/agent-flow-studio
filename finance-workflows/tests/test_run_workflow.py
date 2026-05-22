@@ -1,7 +1,29 @@
-import json, os, pathlib, subprocess, sys, textwrap
+import importlib.util, json, os, pathlib, subprocess, sys, textwrap
 
 REPO = pathlib.Path(__file__).parents[2]  # /…/new_financial-report-system
 FW = REPO / "finance-workflows"
+
+
+def _load_runner():
+    p = FW / "run-workflow.py"
+    spec = importlib.util.spec_from_file_location("run_workflow", p)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
+
+
+def test_load_dotenv_reads_local_env_without_overriding(tmp_path, monkeypatch):
+    m = _load_runner()
+    (tmp_path / ".env").write_text(
+        "# comment\n\nFRED_API_KEY=fred123\nGROQ_API_KEY=gsk_abc\nBLANKLINE\n", "utf-8")
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "shell_wins")  # existing env must win
+    m._load_dotenv(tmp_path)
+    assert os.environ["FRED_API_KEY"] == "fred123"   # loaded from .env
+    assert os.environ["GROQ_API_KEY"] == "shell_wins"  # not overridden
+
+
+def test_load_dotenv_missing_file_is_silent(tmp_path):
+    m = _load_runner()
+    m._load_dotenv(tmp_path / "nope")  # no .env here — must not raise
 
 def test_orchestrator_writes_report_with_fake_claude(tmp_path):
     # Build a fake studio root in tmp_path so we don't touch the real reports/
