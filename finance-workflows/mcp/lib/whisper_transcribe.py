@@ -56,6 +56,10 @@ def _download_wav(video_url: str, dp: pathlib.Path) -> pathlib.Path:
         "--sleep-requests", "2",  # self-pace to avoid YouTube burst rate-limiting
         "-o", str(dp / "a.%(ext)s"), "--quiet",
     ]
+    # EJS n-challenge solver (needs deno on PATH); without it bestaudio is
+    # intermittently unavailable ("Only images are available").
+    if os.environ.get("STUDIO_YTDLP_EJS", "1") != "0":
+        cmd += ["--remote-components", "ejs:github"]
     cookies = os.environ.get("STUDIO_YTDLP_COOKIES_FILE", "")
     if cookies and os.path.exists(cookies):
         cmd += ["--cookies", cookies]

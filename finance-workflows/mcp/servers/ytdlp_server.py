@@ -33,10 +33,20 @@ def _throttle():
 # prompt) and would stall the launchd cron.
 COOKIES_FILE = os.environ.get("STUDIO_YTDLP_COOKIES_FILE", "")
 
+# EJS challenge solver (needs a JS runtime, e.g. `brew install deno`). Without it,
+# YouTube's "n challenge" intermittently hides all real formats ("Only images are
+# available") and bestaudio download fails. With it, formats reappear. Disable by
+# setting STUDIO_YTDLP_EJS=0.
+_EJS = ["ejs:github"] if os.environ.get("STUDIO_YTDLP_EJS", "1") != "0" else None
 
-def _with_cookies(opts: dict) -> dict:
+
+def _harden_opts(opts: dict) -> dict:
+    """Add the YouTube-access hardening shared by every extract call: logged-in
+    cookies (rate-limit ceiling) + EJS remote components (n-challenge solver)."""
     if COOKIES_FILE and os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
+    if _EJS:
+        opts["remote_components"] = _EJS
     return opts
 
 # ── transcript size guard ──────────────────────────────────────────────────────
@@ -145,7 +155,7 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
             "paths": {"home": tmpdir},
             "outtmpl": {"default": "%(id)s.%(ext)s", "subtitle": "%(id)s.%(ext)s"},
         }
-        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
+        with yt_dlp.YoutubeDL(_harden_opts(opts)) as ydl:
             info = ydl.extract_info(video_url, download=False)
         subs = {**(info.get("subtitles") or {}), **(info.get("automatic_captions") or {})}
         for lang in langs:
@@ -207,7 +217,7 @@ def ytdlp_search_videos(query: str, maxResults: int = 1, uploadDateFilter: str =
     """Search YouTube; returns [{video_id,title,upload_date,url}]."""
     spec = f"ytsearch{max(maxResults,1)*3}:{query}"
     _throttle()
-    with yt_dlp.YoutubeDL(_with_cookies({"quiet": True, "extract_flat": True})) as ydl:
+    with yt_dlp.YoutubeDL(_harden_opts({"quiet": True, "extract_flat": True})) as ydl:
         info = ydl.extract_info(spec, download=False)
     return _map_search(info, maxResults)
 
@@ -237,7 +247,7 @@ def ytdlp_latest_from_channel(handle: str, max_results: int = 5):
         _throttle()
         opts = {"quiet": True, "extract_flat": True,
                 "playlistend": max(int(max_results), 1)}
-        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
+        with yt_dlp.YoutubeDL(_harden_opts(opts)) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception:
         return []
