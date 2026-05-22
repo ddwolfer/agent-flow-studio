@@ -25,6 +25,20 @@ def _throttle():
             time.sleep(wait)
         _last_hit[0] = time.monotonic()
 
+
+# ── cookies ──────────────────────────────────────────────────────────────────────
+# A logged-in YouTube session (exported cookies.txt) raises the rate-limit ceiling
+# so a daily multi-channel burst isn't blocked. We use a cookie FILE, not
+# --cookies-from-browser, because the latter hangs headless on macOS (Keychain
+# prompt) and would stall the launchd cron.
+COOKIES_FILE = os.environ.get("STUDIO_YTDLP_COOKIES_FILE", "")
+
+
+def _with_cookies(opts: dict) -> dict:
+    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
+        opts["cookiefile"] = COOKIES_FILE
+    return opts
+
 # ── transcript size guard ──────────────────────────────────────────────────────
 _MAX_CHARS = int(os.environ.get("STUDIO_TRANSCRIPT_MAX_CHARS", "48000"))
 # head+tail split: keep 60 % head, 40 % tail (heuristic: Eason heavy picks toward end)
@@ -131,7 +145,7 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
             "paths": {"home": tmpdir},
             "outtmpl": {"default": "%(id)s.%(ext)s", "subtitle": "%(id)s.%(ext)s"},
         }
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
             info = ydl.extract_info(video_url, download=False)
         subs = {**(info.get("subtitles") or {}), **(info.get("automatic_captions") or {})}
         for lang in langs:
@@ -193,7 +207,7 @@ def ytdlp_search_videos(query: str, maxResults: int = 1, uploadDateFilter: str =
     """Search YouTube; returns [{video_id,title,upload_date,url}]."""
     spec = f"ytsearch{max(maxResults,1)*3}:{query}"
     _throttle()
-    with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True}) as ydl:
+    with yt_dlp.YoutubeDL(_with_cookies({"quiet": True, "extract_flat": True})) as ydl:
         info = ydl.extract_info(spec, download=False)
     return _map_search(info, maxResults)
 
@@ -223,7 +237,7 @@ def ytdlp_latest_from_channel(handle: str, max_results: int = 5):
         _throttle()
         opts = {"quiet": True, "extract_flat": True,
                 "playlistend": max(int(max_results), 1)}
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception:
         return []

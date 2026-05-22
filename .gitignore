@@ -23,6 +23,9 @@ mcp/knowledge-graph/*.sqlite*
 **/.env
 **/.env.local
 **/.env.*.local
+# Browser cookie exports (YouTube session — account credential, never commit)
+**/youtube-cookies.txt
+**/*cookies*.txt
 # Generated reports and binary databases from the inherited financial-report-system
 financial-report-system/reports/
 financial-report-system/data/*.db

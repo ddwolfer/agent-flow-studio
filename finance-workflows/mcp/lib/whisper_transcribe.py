@@ -51,11 +51,16 @@ def _get_model():
 
 def _download_wav(video_url: str, dp: pathlib.Path) -> pathlib.Path:
     """Download bestaudio and normalize to 16kHz mono wav (small + ASR-ready)."""
-    subprocess.run([
+    cmd = [
         "yt-dlp", "-f", "bestaudio", "-x", "--audio-format", "wav",
         "--sleep-requests", "2",  # self-pace to avoid YouTube burst rate-limiting
-        "-o", str(dp / "a.%(ext)s"), "--quiet", video_url,
-    ], check=True)
+        "-o", str(dp / "a.%(ext)s"), "--quiet",
+    ]
+    cookies = os.environ.get("STUDIO_YTDLP_COOKIES_FILE", "")
+    if cookies and os.path.exists(cookies):
+        cmd += ["--cookies", cookies]
+    cmd.append(video_url)
+    subprocess.run(cmd, check=True)
     raw = list(dp.glob("a.*"))
     if not raw:
         raise RuntimeError("yt-dlp produced no audio file")
