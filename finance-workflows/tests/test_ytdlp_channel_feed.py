@@ -78,3 +78,17 @@ def test_empty_handle_returns_empty():
     m = _load()
     assert m.ytdlp_latest_from_channel("", max_results=5) == []
     assert m.ytdlp_latest_from_channel("@", max_results=5) == []
+
+
+def test_throttle_spaces_consecutive_calls(monkeypatch):
+    """_throttle sleeps to keep YouTube-hitting calls >= _MIN_GAP apart."""
+    m = _load()
+    slept = []
+    monkeypatch.setattr(m.time, "monotonic", lambda: 100.0)  # frozen clock
+    monkeypatch.setattr(m.time, "sleep", lambda s: slept.append(s))
+    m._MIN_GAP = 4.0
+    m._last_hit[0] = 0.0
+    m._throttle()                      # 100s since last "hit" → no sleep
+    assert slept == []
+    m._throttle()                      # 0s elapsed (frozen) → must sleep ~4s
+    assert len(slept) == 1 and abs(slept[0] - 4.0) < 0.01

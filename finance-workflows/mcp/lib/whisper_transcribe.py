@@ -53,6 +53,7 @@ def _download_wav(video_url: str, dp: pathlib.Path) -> pathlib.Path:
     """Download bestaudio and normalize to 16kHz mono wav (small + ASR-ready)."""
     subprocess.run([
         "yt-dlp", "-f", "bestaudio", "-x", "--audio-format", "wav",
+        "--sleep-requests", "2",  # self-pace to avoid YouTube burst rate-limiting
         "-o", str(dp / "a.%(ext)s"), "--quiet", video_url,
     ], check=True)
     raw = list(dp.glob("a.*"))

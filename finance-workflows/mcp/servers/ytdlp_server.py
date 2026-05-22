@@ -1,11 +1,29 @@
 import yt_dlp
 from mcp.server.fastmcp import FastMCP
-import sys, pathlib as _pl, os, re, tempfile, shutil
+import sys, pathlib as _pl, os, re, tempfile, shutil, time, threading
 sys.path.insert(0, str(_pl.Path(__file__).parents[1] / "lib"))
 try:
     import whisper_transcribe as _asr
 except Exception:
     _asr = None
+
+# ── self-throttle ───────────────────────────────────────────────────────────────
+# YouTube rate-limits bursts: a daily run hits 5+ channels' /videos + captions in
+# quick succession and the later channels get blocked (anonymous rate ceiling).
+# Diagnosis showed each request works fine in isolation — only the burst trips it.
+# So we space every YouTube-hitting call by at least _MIN_GAP seconds, process-wide.
+# (The MCP server is one long-lived process, so this state persists across tool calls.)
+_MIN_GAP = float(os.environ.get("STUDIO_YTDLP_MIN_GAP", "4"))
+_throttle_lock = threading.Lock()
+_last_hit = [0.0]
+
+
+def _throttle():
+    with _throttle_lock:
+        wait = _MIN_GAP - (time.monotonic() - _last_hit[0])
+        if wait > 0:
+            time.sleep(wait)
+        _last_hit[0] = time.monotonic()
 
 # ── transcript size guard ──────────────────────────────────────────────────────
 _MAX_CHARS = int(os.environ.get("STUDIO_TRANSCRIPT_MAX_CHARS", "48000"))
@@ -100,6 +118,7 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
     Fetch captions via yt_dlp, returning raw text WITHOUT writing any files to cwd.
     Uses a TemporaryDirectory as the working path so no .vtt/.srt files leak.
     """
+    _throttle()
     tmpdir = tempfile.mkdtemp(prefix="ytdlp_caps_")
     try:
         opts = {
@@ -173,6 +192,7 @@ mcp = FastMCP("yt-dlp")
 def ytdlp_search_videos(query: str, maxResults: int = 1, uploadDateFilter: str = "today"):
     """Search YouTube; returns [{video_id,title,upload_date,url}]."""
     spec = f"ytsearch{max(maxResults,1)*3}:{query}"
+    _throttle()
     with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True}) as ydl:
         info = ydl.extract_info(spec, download=False)
     return _map_search(info, maxResults)
@@ -200,6 +220,7 @@ def ytdlp_latest_from_channel(handle: str, max_results: int = 5):
     else:
         url = f"https://www.youtube.com/@{h}/videos"
     try:
+        _throttle()
         opts = {"quiet": True, "extract_flat": True,
                 "playlistend": max(int(max_results), 1)}
         with yt_dlp.YoutubeDL(opts) as ydl:
