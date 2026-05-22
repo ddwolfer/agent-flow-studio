@@ -158,14 +158,20 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
         with yt_dlp.YoutubeDL(_harden_opts(opts)) as ydl:
             info = ydl.extract_info(video_url, download=False)
         subs = {**(info.get("subtitles") or {}), **(info.get("automatic_captions") or {})}
+        import requests
         for lang in langs:
-            if lang in subs and subs[lang]:
-                import requests
-                url = subs[lang][-1].get("url")
-                if url:
-                    t = requests.get(url, timeout=30).text
-                    if t.strip():
-                        return t
+            for s in (subs.get(lang) or []):
+                # Only directly-downloadable VTT. Skip HLS/m3u8 subtitle variants:
+                # their "url" is an .m3u8 manifest, and a plain GET returns the
+                # manifest text, not captions (this silently corrupted a source).
+                # No usable text track → return None so the caller falls back to ASR.
+                proto = s.get("protocol") or ""
+                url = s.get("url") or ""
+                if s.get("ext") != "vtt" or proto.startswith("m3u8") or "manifest" in url or not url:
+                    continue
+                t = requests.get(url, timeout=30).text
+                if t.strip():
+                    return t
     finally:
         # Always clean up the temp directory, removing any written subtitle files
         shutil.rmtree(tmpdir, ignore_errors=True)
