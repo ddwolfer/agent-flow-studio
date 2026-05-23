@@ -10,6 +10,7 @@
     { "kind": "youtube", "name": "Altcoin Daily", "handle": "@AltcoinDaily", "search_query": "Altcoin Daily" },
     { "kind": "youtube", "name": "Coin Bureau", "handle": "@CoinBureau", "search_query": "Coin Bureau" },
     { "kind": "youtube", "name": "Benjamin Cowen (Into The Cryptoverse)", "handle": "UCRvqjQPSeaWn-uEx-w0XOIg", "search_query": "Benjamin Cowen Into The Cryptoverse" },
+    { "kind": "youtube", "name": "提阿非羅大人TiaBTC", "handle": "@tiabtc", "search_query": "tiabtc" },
     { "kind": "web", "name": "zombit", "url": "https://zombit.info/", "rss": "https://zombit.info/feed/" }
   ],
   "tools": ["yt-dlp", "rss", "web-fetch"],
