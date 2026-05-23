@@ -21,6 +21,11 @@ class Source:
 @dataclass
 class Post:
     pdf: bool = False
+    # Telegram notify: env-var NAME holding this workflow's forum-topic id within
+    # the shared supergroup (e.g. "TELEGRAM_TOPIC_CRYPTO" → 123). None/absent →
+    # skip. Empty env value → post to the supergroup's general thread.
+    # Shared across workflows via $TELEGRAM_BOT_TOKEN + $TELEGRAM_CHAT_ID.
+    telegram: Optional[str] = None
 
 
 @dataclass

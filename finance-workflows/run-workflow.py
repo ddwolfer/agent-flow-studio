@@ -193,6 +193,16 @@ def main(argv=None):
         except Exception as e:
             print(f"[history] skipped: {e}", file=sys.stderr)
 
+    # Optional Telegram notify (best-effort; never fails the run)
+    if cfg.post.telegram:
+        try:
+            sys.path.insert(0, str(root / "scripts"))
+            import notify_telegram  # noqa: E402
+            hist_path = output_abs.parent / "_history.jsonl" if cfg.history else None
+            notify_telegram.notify(cfg.name, date, output_abs, hist_path, cfg.post.telegram)
+        except Exception as e:
+            print(f"[telegram] skipped: {e}", file=sys.stderr)
+
     print(f"[run] ok → {output_abs}", file=sys.stderr)
     return 0
 

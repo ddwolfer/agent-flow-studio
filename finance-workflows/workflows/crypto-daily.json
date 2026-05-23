@@ -21,7 +21,7 @@
     "prompts/crypto/main.md"
   ],
   "output": "reports/crypto-daily/{date}.html",
-  "post": { "pdf": true },
+  "post": { "pdf": true, "telegram": "TELEGRAM_TOPIC_CRYPTO" },
   "history": {
     "format": "jsonl",
     "summarize_with": "claude-haiku-4-5",

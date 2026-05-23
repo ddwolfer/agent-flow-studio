@@ -19,7 +19,7 @@
     "prompts/tw-stock/main.md"
   ],
   "output": "reports/eason-tw-stock/{date}.html",
-  "post": { "pdf": true },
+  "post": { "pdf": true, "telegram": "TELEGRAM_TOPIC_EASON" },
   "history": {
     "format": "jsonl",
     "summarize_with": "claude-haiku-4-5",
