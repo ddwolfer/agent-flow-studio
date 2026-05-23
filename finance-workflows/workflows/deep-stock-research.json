@@ -1,14 +1,22 @@
 {
   "$schema_version": 1,
   "name": "deep-stock-research",
-  "description": "Retail-grade deep stock research using free MCPs (Yahoo + FRED + web-fetch). Structure adapted from Anthropic's anthropics/financial-services market-researcher agent; honest about NOT being institutional-grade (no FactSet/Daloopa/S&P access). Edit the sources[] list to change your watchlist.",
+  "description": "Retail-grade deep stock research using free MCPs (Yahoo + FRED + EDGAR + web-fetch). Structure adapted from Anthropic's anthropics/financial-services market-researcher agent; honest about NOT being institutional-grade (no FactSet/Daloopa/S&P access). Watchlist mixes Mag-7 + semi expansion + 2 ETFs (SPY/QQQ) as macro anchors; ETFs skip the 10-K section. Edit sources[] to change.",
   "model": "claude-sonnet-4-6",
-  "max_turns": 80,
+  "max_turns": 100,
   "sources": [
-    { "kind": "stock", "name": "NVDA", "url": "https://investor.nvidia.com/" },
-    { "kind": "stock", "name": "TSM",  "url": "https://investor.tsmc.com/english" },
-    { "kind": "stock", "name": "AAPL", "url": "https://investor.apple.com/" },
-    { "kind": "stock", "name": "MSFT", "url": "https://www.microsoft.com/en-us/Investor" }
+    { "kind": "stock", "name": "NVDA",  "url": "https://investor.nvidia.com/" },
+    { "kind": "stock", "name": "TSM",   "url": "https://investor.tsmc.com/english" },
+    { "kind": "stock", "name": "AAPL",  "url": "https://investor.apple.com/" },
+    { "kind": "stock", "name": "MSFT",  "url": "https://www.microsoft.com/en-us/Investor" },
+    { "kind": "stock", "name": "AVGO",  "url": "https://investors.broadcom.com/" },
+    { "kind": "stock", "name": "AMD",   "url": "https://ir.amd.com/" },
+    { "kind": "stock", "name": "GOOGL", "url": "https://abc.xyz/investor/" },
+    { "kind": "stock", "name": "META",  "url": "https://investor.fb.com/" },
+    { "kind": "stock", "name": "AMZN",  "url": "https://ir.aboutamazon.com/" },
+    { "kind": "stock", "name": "TSLA",  "url": "https://ir.tesla.com/" },
+    { "kind": "stock", "name": "SPY",   "url": "https://www.ssga.com/us/en/intermediary/etfs/spy" },
+    { "kind": "stock", "name": "QQQ",   "url": "https://www.invesco.com/qqq-etf/en/home.html" }
   ],
   "tools": ["yahoo-finance", "fred", "web-fetch", "edgar"],
   "prompts": [

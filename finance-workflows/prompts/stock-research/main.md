@@ -27,6 +27,7 @@ B. **公司年度報告 (SEC EDGAR)** —— 取代之前的 IR 頁抓取(IR 頁
    - `mcp__edgar__edgar_fetch_text(url=<primary_doc_url>, max_chars=60000, offset=0)` → 取前 60K 字的純文字(已 strip script/style)。文件通常 200K+ 字;**你只需要看「Item 1. Business」與「Item 1A. Risk Factors」這兩節**(它們通常在前 60K 內)。如果 `truncated=true` 且你還沒看到 Item 1A,用 `offset=<回傳的 end>` 再叫一次續讀。
    - 若 EDGAR 連 ticker 都解析不到(例如 ADR 結構特殊),才退回 `web_extract_article(<source.url>)` 抓 IR 頁;**該頁回空就標註不可用,不要編造**。
    - 用 EDGAR 取到的「Item 1. Business」內容做「公司概覽 / 產品 / 業務分析」段落,逐字引述他們的描述;「Item 1A. Risk Factors」對應你的「風險」段落(挑 3-5 條最具體、非樣板的)。
+   - **ETF 例外**(例如 SPY、QQQ):ETF 沒有 10-K,**不要呼叫 `edgar_latest_annual`**(會浪費 turn)。改成:Yahoo `get_stock_info` 拿到的 ETF 元數據(longBusinessSummary、totalAssets、yield、expenseRatio、navPrice 等)當「概覽 + 產品」段;「業務分析」改寫成「持股結構/前幾大成份股(若 Yahoo 有給)」或標「ETF 不適用 10-K 級分析」;「風險」改寫成「該指數/類別的系統性風險 + 近期資金流向」。其餘流程(估值/總經連動/觀察重點)照走但偏「大盤錨」視角而非個股估值。
 
 C. **近期新聞**(可選):若你判斷該股近期(過去 7 天)有具體事件(財報、產品發表、地緣風險),可用 `mcp__web-fetch__web_fetch` 或 `web_extract_article` 抓 Yahoo Finance 該 ticker 的 news 頁面(`https://finance.yahoo.com/quote/<TICKER>/news`)。不確定就跳過,不要編造新聞。
 
