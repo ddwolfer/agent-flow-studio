@@ -17,7 +17,7 @@
     "prompts/us-macro/main.md"
   ],
   "output": "reports/us-macro/{date}.html",
-  "post": { "pdf": true, "telegram": "TELEGRAM_TOPIC_MACRO" },
+  "post": { "pdf": true, "telegram": "TELEGRAM_TOPIC_US_MACRO" },
   "history": {
     "format": "jsonl",
     "summarize_with": "claude-haiku-4-5",
