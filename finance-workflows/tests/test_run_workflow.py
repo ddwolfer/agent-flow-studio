@@ -25,6 +25,64 @@ def test_load_dotenv_missing_file_is_silent(tmp_path):
     m = _load_runner()
     m._load_dotenv(tmp_path / "nope")  # no .env here — must not raise
 
+
+# ── claude retry-on-transient ──────────────────────────────────────────────────
+
+def test_is_transient_detects_known_patterns():
+    m = _load_runner()
+    assert m._is_transient("blah blah\nAPI Error: The socket connection was closed unexpectedly\n")
+    assert m._is_transient("Server disconnected without sending a response")
+    assert m._is_transient("connect ECONNRESET")
+    assert m._is_transient("connect ETIMEDOUT")
+    assert not m._is_transient("Error: max-turns exceeded")
+    assert not m._is_transient("")
+
+
+def test_retry_returns_immediately_on_success(tmp_path):
+    m = _load_runner()
+    calls = []
+    runner = lambda *a, **k: (calls.append(1), (0, ""))[1]
+    slept = []
+    rc = m._run_claude_with_retry(["claude"], tmp_path / "l", tmp_path,
+                                  runner=runner, sleeper=slept.append)
+    assert rc == 0 and len(calls) == 1 and slept == []
+
+
+def test_retry_on_transient_then_succeed(tmp_path):
+    m = _load_runner()
+    results = [(1, "API Error: socket connection was closed"), (0, "")]
+    calls = []
+    def runner(*a, **k):
+        calls.append(1); return results.pop(0)
+    slept = []
+    rc = m._run_claude_with_retry(["claude"], tmp_path / "l", tmp_path,
+                                  attempts=3, backoff=5,
+                                  runner=runner, sleeper=slept.append)
+    assert rc == 0 and len(calls) == 2 and slept == [5]
+
+
+def test_no_retry_on_non_transient(tmp_path):
+    m = _load_runner()
+    calls = []
+    def runner(*a, **k):
+        calls.append(1); return (1, "Error: max-turns exceeded")
+    slept = []
+    rc = m._run_claude_with_retry(["claude"], tmp_path / "l", tmp_path,
+                                  runner=runner, sleeper=slept.append)
+    assert rc == 1 and len(calls) == 1 and slept == []  # surfaced immediately
+
+
+def test_retry_gives_up_after_all_attempts(tmp_path):
+    m = _load_runner()
+    calls = []
+    def runner(*a, **k):
+        calls.append(1); return (1, "Server disconnected without sending a response")
+    slept = []
+    rc = m._run_claude_with_retry(["claude"], tmp_path / "l", tmp_path,
+                                  attempts=3, backoff=2,
+                                  runner=runner, sleeper=slept.append)
+    assert rc == 1 and len(calls) == 3 and slept == [2, 6]  # backoff *=3 each time
+
 def test_orchestrator_writes_report_with_fake_claude(tmp_path):
     # Build a fake studio root in tmp_path so we don't touch the real reports/
     workflows = tmp_path / "workflows"; workflows.mkdir()

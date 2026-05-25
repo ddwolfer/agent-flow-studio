@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """finance-workflows orchestrator. Usage: python3 run-workflow.py <name>"""
-import argparse, datetime as _dt, json, os, pathlib, subprocess, sys, time
+import argparse, datetime as _dt, json, os, pathlib, signal, subprocess, sys, time
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -90,6 +90,82 @@ def _python_bin(root):
     return str(venv_py) if venv_py.exists() else sys.executable
 
 
+# ── claude invocation: orphan-safe + retry-on-transient ────────────────────────
+# Two production issues we hit (5/23 and 5/25 mornings):
+#   1. `API Error: socket connection was closed unexpectedly` from claude — an
+#      Anthropic API hiccup that kills the run with exit 1. Single point of
+#      failure for a cron job. → retry on transient patterns only.
+#   2. When claude dies mid-run (case above), its child MCP servers can outlive
+#      it (orphaned), and one was found burning whisper CPU for 2.5h. → put
+#      claude in its own process group and SIGTERM the whole group after wait.
+
+_TRANSIENT_PATTERNS = (
+    "socket connection was closed",
+    "Server disconnected",
+    "Connection reset",
+    "ECONNRESET",
+    "ETIMEDOUT",
+)
+
+
+def _is_transient(log_tail: str) -> bool:
+    return any(p in log_tail for p in _TRANSIENT_PATTERNS)
+
+
+def _run_claude_once(argv_, log_path, root, timeout=3600):
+    """Run claude once; reap orphan MCP children on exit. Returns (rc, log_tail)."""
+    with log_path.open("a", encoding="utf-8") as logf:
+        proc = subprocess.Popen(
+            argv_, cwd=str(root), stdout=logf, stderr=subprocess.STDOUT,
+            start_new_session=True,  # PG leader so we can reap its children
+        )
+        try:
+            rc = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                rc = proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                rc = 124  # convention: timeout
+        finally:
+            # Always SIGTERM the whole process group — reaps orphan MCP servers
+            # that may outlive a crashed/killed claude. Harmless if nothing left.
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    try:
+        tail = log_path.read_text("utf-8", errors="replace")[-4000:]
+    except FileNotFoundError:
+        tail = ""
+    return rc, tail
+
+
+def _run_claude_with_retry(argv_, log_path, root, *, attempts=3, backoff=30,
+                           runner=_run_claude_once, sleeper=time.sleep):
+    """Run claude with retries on TRANSIENT errors only (matches `_is_transient`).
+    Non-transient failures surface immediately — never mask a real bug."""
+    cur = backoff
+    rc, tail = 0, ""
+    for attempt in range(1, attempts + 1):
+        rc, tail = runner(argv_, log_path, root)
+        if rc == 0:
+            return rc
+        if attempt < attempts and _is_transient(tail):
+            print(f"[claude] attempt {attempt} hit transient error; retrying in {cur}s",
+                  file=sys.stderr)
+            with log_path.open("a", encoding="utf-8") as logf:
+                logf.write(f"\n=== retry after attempt {attempt} (transient) ===\n\n")
+            sleeper(cur)
+            cur *= 3  # 30 → 90 → (no further)
+            continue
+        return rc
+    return rc
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("name", help="workflow name (workflows/<name>.json)")
@@ -147,11 +223,10 @@ def main(argv=None):
     print(f"[run] {cfg.name} → {output_abs}", file=sys.stderr)
     with log_path.open("w", encoding="utf-8") as logf:
         logf.write(f"=== argv ===\n{argv_[:1] + ['-p', '<...prompt elided...>'] + argv_[3:]}\n\n")
-        logf.flush()
-        proc = subprocess.run(argv_, cwd=str(root), stdout=logf, stderr=subprocess.STDOUT)
-    if proc.returncode != 0:
-        print(f"[claude] exited {proc.returncode} — see {log_path}", file=sys.stderr)
-        return proc.returncode
+    rc = _run_claude_with_retry(argv_, log_path, root)
+    if rc != 0:
+        print(f"[claude] exited {rc} — see {log_path}", file=sys.stderr)
+        return rc
     if not output_abs.exists():
         print(f"[claude] exit 0 but no HTML at {output_abs} — see {log_path}", file=sys.stderr)
         return 4
