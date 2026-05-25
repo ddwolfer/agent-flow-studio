@@ -174,7 +174,14 @@ def main(argv=None):
         try:
             hint = ("Read the following HTML and produce a single JSON object "
                     f"with exactly these keys: {cfg.history.fields}. Prefer a bare "
-                    "JSON object, but prose/markdown fences around it are tolerated.\n\n"
+                    "JSON object, but prose/markdown fences around it are tolerated.\n"
+                    "Language rule: ALL string values (stance / signals / risks / "
+                    "any prose) MUST be in Traditional Chinese (繁體中文). Keep "
+                    "ticker symbols, English proper nouns, and numeric units verbatim.\n"
+                    "Confidence rule: any 'confidence' / 'avg_confidence' field is on "
+                    "a 0–10 integer scale (use one decimal at most). If the source "
+                    "expresses a percentage (e.g. '60% confidence'), convert to the "
+                    "0–10 scale (60% → 6).\n\n"
                     f"---\n{output_abs.read_text('utf-8')}\n---")
             hist = subprocess.run(
                 [bin_, "-p", hint, "--model", cfg.history.summarize_with,
