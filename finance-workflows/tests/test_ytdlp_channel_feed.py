@@ -1,9 +1,6 @@
-"""Tests for the new ytdlp_latest_from_channel tool — channel-feed-based fetch
-that avoids the keyword-search heuristic of ytdlp_search_videos.
-
-We only test the NEW tool here; the rest of ytdlp_server.py is the proven copy
-from studio/mcp/servers/ and is exercised in studio's own test suite.
-"""
+"""Tests for the ytdlp_latest_from_channel tool — channel-feed-based fetch
+that avoids the keyword-search heuristic of ytdlp_search_videos. Throttle
+spacing is covered at the bottom of this file."""
 import importlib.util, pathlib
 
 

@@ -1,7 +1,7 @@
 # finance-workflows — instructions for working in this folder
 
 This folder is a lean Python workflow runner for producing daily financial
-reports. It is parallel to `../studio/` (which is being archived). Read
+reports — the active codebase for the whole repo. Read
 `../docs/superpowers/specs/2026-05-21-finance-workflows-design.md` for the
 full design.
 

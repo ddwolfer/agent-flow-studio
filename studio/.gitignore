@@ -1,4 +1,0 @@
-node_modules/
-.next/
-runs/
-!app/api/runs/

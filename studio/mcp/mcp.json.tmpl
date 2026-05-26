@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "yt-dlp":        { "command": "@PY@", "args": ["@MCPDIR@/servers/ytdlp_server.py"] },
-    "twse":          { "command": "@PY@", "args": ["@MCPDIR@/servers/twse_server.py"] },
-    "yahoo-finance": { "command": "@PY@", "args": ["@MCPDIR@/servers/yahoo_server.py"] },
-    "fred":          { "command": "@PY@", "args": ["@MCPDIR@/servers/fred_server.py"], "env": { "FRED_API_KEY": "@FREDKEY@" } },
-    "sqlite":        { "command": "@PY@", "args": ["@MCPDIR@/servers/sqlite_server.py"], "env": { "STUDIO_DB_PATH": "@DBPATH@" } }
-  }
-}
