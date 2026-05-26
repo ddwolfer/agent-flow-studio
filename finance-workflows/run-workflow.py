@@ -105,6 +105,14 @@ _TRANSIENT_PATTERNS = (
     "Connection reset",
     "ECONNRESET",
     "ETIMEDOUT",
+    # HTTP-level timeouts — claude surfaces these literally when its request to
+    # Anthropic times out (real hit on 5/26: "Request timed out"). Added after
+    # discovering the original whitelist only covered socket-level disconnects.
+    "Request timed out",
+    "Operation timed out",
+    "Read timeout",
+    "Connect timeout",
+    "fetch failed",
 )
 
 

@@ -34,6 +34,11 @@ def test_is_transient_detects_known_patterns():
     assert m._is_transient("Server disconnected without sending a response")
     assert m._is_transient("connect ECONNRESET")
     assert m._is_transient("connect ETIMEDOUT")
+    # HTTP-level timeouts (regression: 5/26 crypto-daily failure surfaced
+    # literally as "Request timed out", missed by the original whitelist).
+    assert m._is_transient("Request timed out")
+    assert m._is_transient("Operation timed out")
+    assert m._is_transient("fetch failed")
     assert not m._is_transient("Error: max-turns exceeded")
     assert not m._is_transient("")
 
