@@ -235,12 +235,16 @@ def main(argv=None):
             "--max-turns", str(cfg.max_turns),
             "--mcp-config", str(mcp_json_path),
             "--strict-mcp-config",
-            # --bare skips Claude Code hooks (session-start, auto-recall,
-            # search-enforcer, Stop=auto-capture). Workflows are headless
-            # batch jobs; hooks were never the cost we wanted to pay per run.
-            # KG access is via the MCP server above, called explicitly from
-            # the workflow's prompt (no hook needed).
-            "--bare",
+            # Skip the project-level .claude/settings.json (which registers
+            # session-start / auto-recall / search-enforcer / Stop=auto-capture
+            # hooks intended for the interactive Claude Code session). The Stop
+            # hook in particular spawned an Opus agent at the end of every
+            # workflow run — a real per-day cost for zero workflow value.
+            # We previously tried --bare but it disables credentials loading
+            # ("Not logged in"). --setting-sources user keeps auth + user-level
+            # config while dropping the project hooks. KG access is via the
+            # MCP server above, called explicitly from the workflow prompt.
+            "--setting-sources", "user",
             "--allowedTools", ",".join(allowed)]
     print(f"[run] {cfg.name} → {output_abs}", file=sys.stderr)
     with log_path.open("w", encoding="utf-8") as logf:
