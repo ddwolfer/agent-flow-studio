@@ -15,10 +15,5 @@
     "prompts/serenity-digest/main.md"
   ],
   "output": "reports/serenity-digest/{date}.html",
-  "post": { "pdf": false, "telegram": "TELEGRAM_TOPIC_SERENITY" },
-  "history": {
-    "format": "jsonl",
-    "summarize_with": "claude-haiku-4-5",
-    "fields": ["topTickers", "stances", "priorities", "newInTop10", "droppedFromTop10", "priorityMovers", "metrics", "writes", "kg_node_ids", "status"]
-  }
+  "post": { "pdf": false, "telegram": "TELEGRAM_TOPIC_SERENITY" }
 }
