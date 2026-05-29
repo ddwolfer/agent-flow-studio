@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Serenity Digest Phase 1 + KG 實作計劃</title>
+<style>
+  :root {
+    --bg: #fafaf7;
+    --fg: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+    --accent-soft: #ddf4ff;
+    --code-bg: #f6f8fa;
+    --code-border: #d0d7de;
+    --card-bg: #ffffff;
+    --warn: #bf8700;
+    --warn-bg: #fff8c5;
+    --ok: #1a7f37;
+    --ok-bg: #dcffe4;
+    --line: #d8dee4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.7;
+    font-size: 16px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 96px; }
+  header.doc-head {
+    border-bottom: 2px solid var(--line);
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+  }
+  header.doc-head h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    letter-spacing: 0.5px;
+  }
+  header.doc-head .meta { color: var(--muted); margin: 0; font-size: 14px; }
+  header.doc-head .agent-note {
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    padding: 10px 14px;
+    margin-top: 16px;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  nav.toc {
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 32px;
+  }
+  nav.toc h2 { margin: 0 0 8px; font-size: 16px; color: var(--muted); }
+  nav.toc ol { margin: 0; padding-left: 22px; }
+  nav.toc li { margin: 2px 0; font-size: 14px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  h2 {
+    margin: 36px 0 14px;
+    font-size: 22px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 4px;
+  }
+  h3 { margin: 22px 0 8px; font-size: 17px; }
+  h4 { margin: 16px 0 4px; font-size: 15px; color: var(--muted); }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 22px; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 14.5px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--code-bg); font-weight: 600; }
+  code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--code-border);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin: 10px 0;
+  }
+  pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 18px;
+    margin: 10px 0;
+  }
+  .card.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .card.ok   { border-left-color: var(--ok);   background: var(--ok-bg); }
+  .card h3 { margin-top: 0; }
+  section.task {
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 28px 0;
+  }
+  section.task > h2 {
+    margin-top: 0;
+    border-bottom: 1px dashed var(--line);
+    padding-bottom: 6px;
+    font-size: 20px;
+    color: #24292f;
+  }
+  .task-meta {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 6px 16px;
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 14px;
+  }
+  .task-meta .label {
+    color: var(--muted);
+    font-weight: 600;
+    text-align: right;
+  }
+  .why {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 8px 14px;
+    margin: 10px 0;
+    border-radius: 3px;
+    font-size: 14.5px;
+  }
+  .why .label { font-weight: 700; color: var(--accent); margin-right: 6px; }
+  ol.steps { list-style: none; padding-left: 0; }
+  ol.steps > li.step {
+    border-top: 1px dashed var(--line);
+    padding: 14px 0 4px 32px;
+    position: relative;
+    margin: 0;
+  }
+  ol.steps > li.step:first-child { border-top: none; }
+  ol.steps > li.step::before {
+    content: "☐";
+    position: absolute;
+    left: 4px;
+    top: 16px;
+    font-size: 18px;
+    color: var(--muted);
+  }
+  ol.steps > li.step .step-title {
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: #24292f;
+  }
+  .run {
+    background: #0d1117;
+    color: #c9d1d9;
+    padding: 10px 14px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    margin: 8px 0;
+  }
+  .run::before { content: "$ "; color: #7ee787; }
+  .expected {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 6px 0;
+  }
+  .expected .label { color: var(--ok); font-weight: 600; }
+  .file-list { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 14px; }
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  .tag.new    { background: #dafbe1; color: #1a7f37; }
+  .tag.mod    { background: #fff5b3; color: #9a6700; }
+  .tag.create { background: #ddf4ff; color: #0969da; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 32px 0; }
+  .handoff {
+    background: var(--accent-soft);
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    padding: 18px 24px;
+    margin-top: 32px;
+  }
+  .handoff h2 { border: none; margin-top: 0; }
+  blockquote {
+    border-left: 3px solid var(--line);
+    padding: 4px 14px;
+    margin: 10px 0;
+    color: var(--muted);
+    background: var(--code-bg);
+    border-radius: 0 4px 4px 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <h1>Serenity Digest Phase 1 + KG 實作計劃</h1>
+  <p class="meta">日期 2026-05-29 · 對應檔 <code>docs/superpowers/plans/2026-05-29-serenity-digest-phase1-kg.md</code></p>
+  <div class="agent-note">
+    <strong>給接手的工程師 / Agent:</strong> 本計劃以 superpowers:subagent-driven-development (推薦) 或 superpowers:executing-plans 執行。每個步驟以 <code>☐</code> 標示,做完打勾。
+  </div>
+</header>
+
+<nav class="toc">
+  <h2>目錄</h2>
+  <ol>
+    <li><a href="#overview">總覽(目標 / 架構 / 技術棧 / 背景)</a></li>
+    <li><a href="#file-structure">檔案結構</a></li>
+    <li><a href="#decisions">已寫入計劃的架構決策</a></li>
+    <li><a href="#task-1">Task 1:<code>mcp_render</code> 加上 <code>@ROOT@</code> 替換</a></li>
+    <li><a href="#task-2">Task 2: <code>run-workflow.py</code> 接通 <code>root_dir</code> + 把 <code>knowledge-graph</code> 註冊進 template</a></li>
+    <li><a href="#task-3">Task 3: <code>claude -p</code> 加上 <code>--bare</code></a></li>
+    <li><a href="#task-4"><code>notify_telegram.py</code> 優先使用 <code>_brief.md</code></a></li>
+    <li><a href="#task-5">Task 5: 寫 Serenity 三份 prompt(framework / voice / main)</a></li>
+    <li><a href="#task-6">Task 6: 建立 <code>workflows/serenity-digest.json</code></a></li>
+    <li><a href="#task-7">Task 7: 端到端手動驗證</a></li>
+    <li><a href="#task-8">Task 8: 安裝 launchd 每日 06:00 排程</a></li>
+    <li><a href="#self-review">自我檢查</a></li>
+    <li><a href="#handoff">執行交接</a></li>
+  </ol>
+</nav>
+
+<section id="overview">
+  <h2>總覽</h2>
+  <div class="card">
+    <h3>目標</h3>
+    <p>把 <code>serenity-digest</code> 加入 finance-workflows,成為第 5 個 workflow — 每天 06:00 台北時間抓取 <code>analysissite.vercel.app</code>,產出一份 HTML 存檔 + 一份 Telegram 用的 Markdown brief(Tier 1/2/3 + 相關訊號 排版),並從 day 1 就讀寫專案的 <code>knowledge-graph</code> MCP。</p>
+  </div>
+  <div class="card">
+    <h3>架構</h3>
+    <p>用現有 <code>run-workflow.py</code> orchestrator,新增一份 <code>workflows/serenity-digest.json</code> 與三份 <code>prompts/serenity-digest/{framework,voice,main}.md</code> 即可。配合兩個成對的 runner 擴充:</p>
+    <ol>
+      <li><strong><code>mcp_render</code> 加上 <code>@ROOT@</code> 替換</strong>:讓 workflow MCP 能指到 <code>mcp/knowledge-graph</code>(它在 <code>finance-workflows/</code> 上一層)。</li>
+      <li><strong><code>notify_telegram.py</code> 學會優先讀同目錄的 <code>_brief.md</code></strong>:當作 Telegram 內文,沒有才退回原本 history-based 摘要。</li>
+    </ol>
+    <p>呼叫 <code>claude -p</code> 時加 <code>--bare</code>,把專案層的 Claude Code hook 關掉(否則 Stop hook 會在每次 workflow 跑完都開一個 Opus session 做 auto-capture)。所有 KG 呼叫都是 prompt-driven,不靠 hook。</p>
+  </div>
+  <div class="card">
+    <h3>技術棧</h3>
+    <p>Python 3(現有 finance-workflows runner)、Node.js(現有 knowledge-graph MCP)、Claude CLI(<code>claude -p</code>)、<code>web-fetch</code> MCP(爬蟲)、<code>knowledge-graph</code> MCP(讀寫)、launchd(每日排程)、Telegram Bot API(推播)。</p>
+  </div>
+  <div class="card">
+    <h3>背景</h3>
+    <p>參考規格書在 <code>serenity-digest-spec/</code>。KG MCP schema 經驗證為 <strong>server 端強制 anti-fabrication</strong>(principle 必須有 quote;inference 不能建 must_precede / reason_for 邊)— 見 <code>mcp/knowledge-graph/tools/knowledge-tools.js:30-35,136-145</code>。Hook 設定在專案根的 <code>.claude/settings.json</code>,若不關會在 workflow 子進程一起 fire。Telegram topic 沿用既有的 <code>TELEGRAM_TOPIC_*</code> 命名約定。</p>
+  </div>
+</section>
+
+<section id="file-structure">
+  <h2>檔案結構</h2>
+
+  <h3>新增 <span class="tag new">CREATE</span></h3>
+  <ul class="file-list">
+    <li><code>finance-workflows/workflows/serenity-digest.json</code> — workflow 設定</li>
+    <li><code>finance-workflows/prompts/serenity-digest/framework.md</code> — 領域框架(tier 規則、新聞 0-100 評分、KG mapping)</li>
+    <li><code>finance-workflows/prompts/serenity-digest/voice.md</code> — 口吻規則 + 反模式禁用詞</li>
+    <li><code>finance-workflows/prompts/serenity-digest/main.md</code> — 主流程提示詞(抓取 → diff → KG 撈 → 評分 → HTML → _brief.md → KG 寫)</li>
+    <li><code>finance-workflows/tests/test_serenity_workflow_loads.py</code> — smoke test 確認 workflow JSON 可載入</li>
+    <li><code>~/Library/LaunchAgents/com.financeworkflows.serenity-digest.plist</code> — 每日 06:00 cron</li>
+  </ul>
+
+  <h3>修改 <span class="tag mod">MODIFY</span></h3>
+  <ul class="file-list">
+    <li><code>finance-workflows/mcp_render.py</code> — 新增 <code>@ROOT@</code> 替換 + <code>root_dir</code> kwarg</li>
+    <li><code>finance-workflows/tests/test_mcp_render.py</code> — 加 <code>@ROOT@</code> 替換的測試</li>
+    <li><code>finance-workflows/mcp/mcp.json.tmpl</code> — 用 <code>@ROOT@</code> 新增 <code>knowledge-graph</code> 條目</li>
+    <li><code>finance-workflows/run-workflow.py</code> — 傳 <code>root_dir=str(root.parent)</code> 給 render_mcp;加 <code>knowledge-graph</code> 進 TOOL_MAP;加 <code>--bare</code> 到 claude argv</li>
+    <li><code>finance-workflows/scripts/notify_telegram.py</code> — 同目錄有 <code>_brief.md</code> 時優先使用</li>
+    <li><code>finance-workflows/tests/test_notify_telegram.py</code> — 加 <code>_brief.md</code> 優先行為的測試</li>
+    <li><code>finance-workflows/.env</code> — 加 <code>TELEGRAM_TOPIC_SERENITY=&lt;id&gt;</code>(由使用者填)</li>
+  </ul>
+
+  <h3>不動</h3>
+  <ul class="file-list">
+    <li><code>.claude/settings.json</code> — 主 Claude Code session 的 hook 保留;workflow 用 <code>--bare</code> 略過</li>
+    <li>現有 4 個 workflow(crypto-daily, eason-tw-stock, us-macro, deep-stock-research)— 它們透過 TOOL_MAP/template 改動自動「能用 KG」但自己沒宣告 <code>knowledge-graph</code> 在 tools,所以執行時不受影響</li>
+  </ul>
+</section>
+
+<section id="decisions">
+  <h2>已寫入計劃的架構決策</h2>
+  <ol>
+    <li><strong>Day-1 KG 讀寫</strong>(之前討論的 Option C)— KG MCP 在 server 端強制 anti-fab schema,寫入安全。</li>
+    <li><strong>Source 標記約定</strong>:Serenity 寫入的每個 node 都用 <code>source="serenity-digest"</code> + <code>metadata={"workflow": "serenity-digest", "site": "analysissite", "ticker": "&lt;T&gt;"}</code>。這是 soft 分隔(search_memory 不支援 metadata filter),但 <code>list_knowledge</code> 可以用 source filter 做稽核。</li>
+    <li><strong>每日寫入硬上限</strong>:每次跑 ≤ 20 個 <code>store_knowledge</code>、≤ 30 個 <code>connect_knowledge</code>。寫在 prompt 規則裡。對應 spec <code>docs/04-daily-workflow.md</code> Step G。</li>
+    <li><strong><code>--bare</code> 套用到所有 workflow</strong>,不只 Serenity。其他 workflow 本來也不靠 hook 取得價值;每次跑完的 Opus auto-capture 是意外開銷,該關。</li>
+    <li><strong>Persona Layer(SKILL.md 蒸餾)延後</strong>— spec 自己也說要累積 ~30 天 snapshot 才有東西蒸餾。Phase 1 跑「樸素模式」。</li>
+    <li><strong>週 / 月 / 季 cadence 延後</strong>— 不在使用者本次需求內。</li>
+    <li><strong>報告存在 <code>finance-workflows/reports/serenity-digest/</code></strong>,不是 <code>~/Desktop/serenity-digest/</code>。與現有 4 個 workflow 一致;spec 寫 Desktop 是不同 host 架構。</li>
+    <li><strong><code>_brief.md</code> 是 Telegram 內文</strong>;HTML 是存檔。此 workflow 不出 PDF(brief 短,Markdown native)。</li>
+  </ol>
+</section>
+
+<hr>
+
+<section class="task" id="task-1">
+  <h2>Task 1: <code>mcp_render</code> 加上 <code>@ROOT@</code> 替換</h2>
+  <div class="task-meta">
+    <span class="label">修改</span><span><code>finance-workflows/mcp_render.py:10-46</code></span>
+    <span class="label">測試</span><span><code>finance-workflows/tests/test_mcp_render.py</code>(新增 2 個 test)</span>
+  </div>
+  <div class="why">
+    <span class="label">為什麼先做這個:</span><code>mcp/knowledge-graph/main.js</code> 在專案根目錄,在 <code>finance-workflows/</code> 上一層。現有 <code>@MCPDIR@</code> 佔位符只涵蓋 <code>finance-workflows/mcp/</code>。需要一個乾淨的方式跨出去,而不是在 template 硬寫絕對路徑。
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:先寫失敗的測試</div>
+      <p>在 <code>finance-workflows/tests/test_mcp_render.py</code> 結尾追加兩個 test:</p>
+      <pre><code>def test_render_substitutes_root(tmp_path):
+    """@ROOT@ in args resolves to root_dir, distinct from @MCPDIR@."""
+    m = _load()
+    tmpl = tmp_path / "mcp.json.tmpl"
+    tmpl.write_text("""{
+      "mcpServers": {
+        "kg": {"command": "node", "args": ["@ROOT@/mcp/knowledge-graph/main.js"]}
+      }
+    }""", "utf-8")
+    out = tmp_path / "mcp.json"
+    m.render_mcp(tools=["kg"], mcp_dir=str(tmp_path / "fw" / "mcp"),
+                 python_bin="/x/py", tmpl_path=tmpl, out_path=out,
+                 root_dir=str(tmp_path / "root"))
+    cfg = json.loads(out.read_text("utf-8"))
+    assert cfg["mcpServers"]["kg"]["args"][0] == \
+        f"{tmp_path / 'root'}/mcp/knowledge-graph/main.js"
+
+
+def test_render_root_unset_leaves_placeholder_literal(tmp_path):
+    """If root_dir is None, @ROOT@ stays literal (parallel to env_subs behaviour)
+    so a misconfigured caller fails loud at MCP startup, not silently."""
+    m = _load()
+    tmpl = tmp_path / "mcp.json.tmpl"
+    tmpl.write_text("""{
+      "mcpServers": {
+        "kg": {"command": "node", "args": ["@ROOT@/mcp/knowledge-graph/main.js"]}
+      }
+    }""", "utf-8")
+    out = tmp_path / "mcp.json"
+    m.render_mcp(tools=["kg"], mcp_dir=str(tmp_path / "fw" / "mcp"),
+                 python_bin="/x/py", tmpl_path=tmpl, out_path=out)
+    cfg = json.loads(out.read_text("utf-8"))
+    assert cfg["mcpServers"]["kg"]["args"][0] == \
+        "@ROOT@/mcp/knowledge-graph/main.js"</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:跑新 test 確認 fail</div>
+      <p>從 <code>finance-workflows/</code> 跑:</p>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/test_mcp_render.py -v -k "root"</div>
+      <p class="expected"><span class="label">預期:</span>兩個 test FAIL。<code>test_render_substitutes_root</code> 會出現 <code>TypeError: render_mcp() got an unexpected keyword argument 'root_dir'</code>。確認失敗原因正確。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:實作 <code>@ROOT@</code> 替換</div>
+      <p>編輯 <code>finance-workflows/mcp_render.py</code>。修改 <code>render_mcp</code> 簽章與 body:</p>
+      <pre><code>def render_mcp(*, tools, mcp_dir, python_bin, tmpl_path, out_path,
+               env_subs=None, root_dir=None):
+    """Read tmpl, parse JSON, retain only the requested server keys, substitute
+    @PY@/@MCPDIR@/@ROOT@ in command/args and any `@KEY@` from `env_subs` in env
+    values, write to out_path. Returns the absolute out_path as a string.
+
+    @ROOT@ is the project root (one level above finance-workflows/), used by
+    MCPs that live outside finance-workflows (e.g. mcp/knowledge-graph).
+
+    Servers whose template has an env entry referencing `@KEY@` but `env_subs`
+    does not include that KEY are still rendered — their `@KEY@` placeholder
+    remains literal so failures are visible at MCP startup rather than silent.
+    @ROOT@ follows the same rule: if root_dir is None, it stays literal.
+
+    Raises McpRenderError if any requested tool isn't in the template.
+    """
+    tmpl = json.loads(pathlib.Path(tmpl_path).read_text("utf-8"))
+    available = set(tmpl.get("mcpServers", {}).keys())
+    unknown = [t for t in tools if t not in available]
+    if unknown:
+        raise McpRenderError(f"unknown MCP server(s) in workflow.tools: {unknown}; "
+                             f"template has: {sorted(available)}")
+    env_subs = env_subs or {}
+    rendered = {"mcpServers": {}}
+    for name in tools:
+        entry = json.loads(json.dumps(tmpl["mcpServers"][name]))  # deep copy
+        entry["command"] = entry["command"].replace("@PY@", python_bin)
+        def _sub(s):
+            s = s.replace("@MCPDIR@", mcp_dir).replace("@PY@", python_bin)
+            if root_dir is not None:
+                s = s.replace("@ROOT@", root_dir)
+            return s
+        entry["args"] = [_sub(a) for a in entry.get("args", [])]
+        if "env" in entry:
+            new_env = {}
+            for k, v in entry["env"].items():
+                vs = v
+                for sk, sv in env_subs.items():
+                    vs = vs.replace(f"@{sk}@", sv)
+                new_env[k] = vs
+            entry["env"] = new_env
+        rendered["mcpServers"][name] = entry
+    out = pathlib.Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rendered, indent=2, ensure_ascii=False), "utf-8")
+    return str(out)</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:再跑新 test 確認通過</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/test_mcp_render.py -v</div>
+      <p class="expected"><span class="label">預期:</span>mcp_render 全部 test PASS(原本 5 個 + 新增 2 個 = 7)。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 5:跑整套 test 確認沒 regression</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/ -v</div>
+      <p class="expected"><span class="label">預期:</span>原本能過的測試都還能過。<code>run-workflow.py</code> 還沒呼叫 <code>render_mcp</code> 帶 <code>root_dir</code>,但因為 <code>root_dir</code> 預設 <code>None</code>,既有測試不受影響。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 6:Commit</div>
+      <pre><code>git add finance-workflows/mcp_render.py finance-workflows/tests/test_mcp_render.py
+git commit -m "feat(mcp_render): add @ROOT@ substitution for MCPs outside finance-workflows
+
+The knowledge-graph MCP lives at &lt;project-root&gt;/mcp/knowledge-graph/, one
+level above finance-workflows/. @MCPDIR@ only covers finance-workflows/mcp/,
+so workflows that want KG need a way to reach the project root without
+hard-coding absolute paths in the template. @ROOT@ fills that gap. Like
+@KEY@ env subs, it stays literal when unset so misconfiguration fails loud
+at MCP startup rather than masquerading as a missing file.
+
+Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;"
+git push origin main</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section class="task" id="task-2">
+  <h2>Task 2: 接通 <code>root_dir</code> + 把 <code>knowledge-graph</code> 註冊進 template</h2>
+  <div class="task-meta">
+    <span class="label">修改</span><span><code>finance-workflows/run-workflow.py:17-40, 198-205</code></span>
+    <span class="label">修改</span><span><code>finance-workflows/mcp/mcp.json.tmpl</code></span>
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:把 <code>root_dir</code> 傳進 <code>render_mcp</code></div>
+      <p>在 <code>finance-workflows/run-workflow.py</code> 找到 201-207 行的 render_mcp 呼叫:</p>
+      <pre><code>    try:
+        mcp_json_path = render_mcp(tools=cfg.tools, mcp_dir=mcp_dir,
+                                   python_bin=_python_bin(root),
+                                   tmpl_path=tmpl, out_path=out_mcp,
+                                   env_subs=_load_env_subs(root))
+    except (FileNotFoundError, McpRenderError) as e:
+        print(f"[mcp_render] {e}", file=sys.stderr); return 3</code></pre>
+      <p>改為:</p>
+      <pre><code>    try:
+        mcp_json_path = render_mcp(tools=cfg.tools, mcp_dir=mcp_dir,
+                                   python_bin=_python_bin(root),
+                                   tmpl_path=tmpl, out_path=out_mcp,
+                                   env_subs=_load_env_subs(root),
+                                   root_dir=str(root.parent))
+    except (FileNotFoundError, McpRenderError) as e:
+        print(f"[mcp_render] {e}", file=sys.stderr); return 3</code></pre>
+      <p>這裡的 <code>root</code> 是 <code>finance-workflows/</code>;<code>root.parent</code> 就是專案根,<code>mcp/knowledge-graph/</code> 在那邊。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:在 TOOL_MAP 加 <code>knowledge-graph</code></div>
+      <p>在 <code>finance-workflows/run-workflow.py</code> 的 <code>TOOL_MAP</code>(17-40 行附近),在 <code>"edgar"</code> 條目後加:</p>
+      <pre><code>    "knowledge-graph": [
+        "store_knowledge", "connect_knowledge", "update_knowledge",
+        "forget_knowledge", "search_memory", "get_knowledge",
+        "list_knowledge", "traverse_graph",
+        "record_experience", "recall_experience",
+        "maintain_graph", "memory_stats",
+    ],</code></pre>
+      <p>這是 <code>mcp/knowledge-graph/tools/</code> 定義的 12 個 tool。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:在 mcp.json.tmpl 註冊 <code>knowledge-graph</code></div>
+      <p>編輯 <code>finance-workflows/mcp/mcp.json.tmpl</code>,在 <code>"edgar"</code> 後新增一條:</p>
+      <pre><code>{
+  "mcpServers": {
+    "yt-dlp":        { "command": "@PY@", "args": ["@MCPDIR@/servers/ytdlp_server.py"] },
+    "rss":           { "command": "@PY@", "args": ["@MCPDIR@/servers/rss_server.py"] },
+    "web-fetch":     { "command": "@PY@", "args": ["@MCPDIR@/servers/web_fetch_server.py"] },
+    "fred":          { "command": "@PY@", "args": ["@MCPDIR@/servers/fred_server.py"], "env": { "FRED_API_KEY": "@FREDKEY@" } },
+    "yahoo-finance": { "command": "@PY@", "args": ["@MCPDIR@/servers/yahoo_server.py"] },
+    "twse":          { "command": "@PY@", "args": ["@MCPDIR@/servers/twse_server.py"] },
+    "edgar":         { "command": "@PY@", "args": ["@MCPDIR@/servers/edgar_server.py"] },
+    "knowledge-graph": { "command": "node", "args": ["@ROOT@/mcp/knowledge-graph/main.js"] }
+  }
+}</code></pre>
+      <p>注意 JSON 逗號。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:用 one-liner 手動驗證 rendering</div>
+      <p>從 <code>finance-workflows/</code>:</p>
+      <pre><code>mcp/.venv/bin/python -c "
+import sys, pathlib, json
+sys.path.insert(0, '.')
+from mcp_render import render_mcp
+out = render_mcp(tools=['knowledge-graph'], mcp_dir='/abs/mcp',
+                 python_bin='/abs/py',
+                 tmpl_path=pathlib.Path('mcp/mcp.json.tmpl'),
+                 out_path=pathlib.Path('/tmp/mcp-kg-test.json'),
+                 root_dir='/abs/root')
+print(open(out).read())
+"</code></pre>
+      <p class="expected"><span class="label">預期:</span>輸出的 JSON 裡 <code>args[0]</code> 是 <code>"/abs/root/mcp/knowledge-graph/main.js"</code>。完成後清理:<code>rm /tmp/mcp-kg-test.json</code></p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 5:跑整套 test</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/ -v</div>
+      <p class="expected"><span class="label">預期:</span>全部 PASS。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 6:Commit</div>
+      <pre><code>git add finance-workflows/run-workflow.py finance-workflows/mcp/mcp.json.tmpl
+git commit -m "feat(mcp): register knowledge-graph MCP for workflow access
+
+Wires the project-root knowledge-graph MCP server into the workflow MCP
+template using the new @ROOT@ substitution. TOOL_MAP picks up the 12 tools
+the server exports. Existing workflows don't declare 'knowledge-graph' in
+their tools list, so this is a no-op for them. Upcoming serenity-digest
+workflow will consume it.
+
+Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;"
+git push origin main</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section class="task" id="task-3">
+  <h2>Task 3: <code>claude -p</code> 加上 <code>--bare</code></h2>
+  <div class="task-meta">
+    <span class="label">修改</span><span><code>finance-workflows/run-workflow.py:223-230</code></span>
+  </div>
+  <div class="why">
+    <span class="label">為什麼:</span>專案根的 <code>.claude/settings.json</code> 註冊了 4 個 hook(session-start / auto-recall / search-enforcer / Stop=auto-capture)。這些是給主 Claude Code session 用的,不是給 headless <code>claude -p</code>。尤其 Stop hook 會在每次 workflow 跑完 spawn 一個 <code>claude-opus-4-6</code> agent — 這是每天每個 workflow 都多付的成本,沒有收益。<code>--bare</code> 是文件記載的關 hook 開關。
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:在 argv 加 <code>--bare</code></div>
+      <p>找到 225 行附近的 argv:</p>
+      <pre><code>    argv_ = [bin_, "-p", prompt,
+            "--model", cfg.model,
+            "--max-turns", str(cfg.max_turns),
+            "--mcp-config", str(mcp_json_path),
+            "--strict-mcp-config",
+            "--allowedTools", ",".join(allowed)]</code></pre>
+      <p>改為:</p>
+      <pre><code>    argv_ = [bin_, "-p", prompt,
+            "--model", cfg.model,
+            "--max-turns", str(cfg.max_turns),
+            "--mcp-config", str(mcp_json_path),
+            "--strict-mcp-config",
+            # --bare skips Claude Code hooks (session-start, auto-recall,
+            # search-enforcer, Stop=auto-capture). Workflows are headless
+            # batch jobs; hooks were never the cost we wanted to pay per run.
+            # KG access is via the MCP server above, called explicitly from
+            # the workflow's prompt (no hook needed).
+            "--bare",
+            "--allowedTools", ",".join(allowed)]</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:驗證 <code>claude --help</code> 認得 <code>--bare</code></div>
+      <div class="run">claude --help 2>&amp;1 | grep -E "^\s+--bare"</div>
+      <p class="expected"><span class="label">預期:</span>看到 <code>--bare Minimal mode: skip hooks, LSP, plugin...</code>。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:跑整套 test</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/ -v</div>
+      <p class="expected"><span class="label">預期:</span>全部 PASS。<code>test_run_workflow.py</code> 的 retry test 用注入 runner,跟 argv 形狀無關。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:Commit</div>
+      <pre><code>git add finance-workflows/run-workflow.py
+git commit -m "fix(run): pass --bare to claude so workflow runs skip Claude Code hooks
+
+The project's .claude/settings.json registers session-start / auto-recall /
+search-enforcer / Stop=auto-capture hooks meant for interactive Claude Code
+sessions. Headless workflow runs were also firing them — most damagingly,
+the Stop hook spawned an extra Opus agent after every nightly run, which
+was a real per-day cost for zero workflow value. --bare is the documented
+switch to disable them. KG access (used by the upcoming serenity-digest
+workflow) is via the MCP server, called explicitly from the prompt.
+
+Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;"
+git push origin main</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section class="task" id="task-4">
+  <h2>Task 4: <code>notify_telegram.py</code> 優先使用 <code>_brief.md</code></h2>
+  <div class="task-meta">
+    <span class="label">修改</span><span><code>finance-workflows/scripts/notify_telegram.py</code></span>
+    <span class="label">測試</span><span><code>finance-workflows/tests/test_notify_telegram.py</code>(新增 2 個 test)</span>
+  </div>
+  <div class="why">
+    <span class="label">為什麼:</span>Serenity 需要特定的 Tier 1/2/3/相關訊號 排版 — 現有通用 <code>📊基調 / 🔑Top signals / ⚠️Top risks</code> 不合適。讓 workflow 自己產出同目錄的 <code>_brief.md</code>,notifier 偵測到就拿它當主體,既能客製又不影響其他 4 個 workflow。
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:先寫失敗的 test</div>
+      <p>在 <code>finance-workflows/tests/test_notify_telegram.py</code> 結尾追加:</p>
+      <pre><code>def test_brief_md_wins_over_history(monkeypatch, tmp_path):
+    """If a _brief.md sits next to the output HTML, its content IS the
+    Telegram message body — history-based summary is bypassed."""
+    m = _load()
+    monkeypatch.setattr(m.httpx, "Client", _FakeClient)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "BOT")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-1001")
+    monkeypatch.setenv("TELEGRAM_TOPIC_S", "99")
+    html = tmp_path / "r.html"; html.write_text("&lt;p&gt;x&lt;/p&gt;", "utf-8")
+    brief = tmp_path / "_brief.md"; brief.write_text(
+        "📊 *Tier 1 NVDA* — testing _brief.md path", "utf-8")
+    # history exists but should be ignored
+    hist = _write_history(tmp_path, "2026-05-29",
+                          {"overall_stance": "SHOULD NOT APPEAR"})
+    m.notify("serenity-digest", "2026-05-29", html, hist, "TELEGRAM_TOPIC_S")
+    assert len(_FakeClient.posts) == 1  # message only, no PDF
+    sent = _FakeClient.posts[0]["data"]["text"]
+    assert "Tier 1 NVDA" in sent
+    assert "SHOULD NOT APPEAR" not in sent
+
+
+def test_no_brief_md_falls_back_to_history(monkeypatch, tmp_path):
+    """Existing behaviour preserved for workflows without a _brief.md."""
+    m = _load()
+    monkeypatch.setattr(m.httpx, "Client", _FakeClient)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "BOT")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-1001")
+    html = tmp_path / "r.html"; html.write_text("&lt;p&gt;x&lt;/p&gt;", "utf-8")
+    hist = _write_history(tmp_path, "2026-05-29",
+                          {"overall_stance": "Bullish baseline"})
+    m.notify("us-macro", "2026-05-29", html, hist, None)
+    assert len(_FakeClient.posts) == 1
+    assert "Bullish baseline" in _FakeClient.posts[0]["data"]["text"]</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:跑新 test 確認 fail</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/test_notify_telegram.py -v -k "brief_md"</div>
+      <p class="expected"><span class="label">預期:</span><code>test_brief_md_wins_over_history</code> FAIL — 沒實作時內容會出現 <code>SHOULD NOT APPEAR</code>。fallback test 已經會過。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:實作 <code>_brief.md</code> 優先邏輯</div>
+      <p>編輯 <code>finance-workflows/scripts/notify_telegram.py</code>,把 <code>hist = ...</code> 那段改為:</p>
+      <pre><code>        hist = _latest_history(pathlib.Path(history_path), date) if history_path else None
+        # Prefer a workflow-authored _brief.md sibling to the HTML output. When
+        # present it IS the Telegram body, bypassing the history-derived summary.
+        # Used by serenity-digest (Tier 1/2/3 layout) and any future workflow
+        # that wants a custom Markdown shape.
+        brief_md = pathlib.Path(output_html).with_name("_brief.md")
+        if brief_md.exists():
+            text = brief_md.read_text("utf-8")
+        else:
+            text = _build_message(workflow_name, date, hist)
+        base = {"chat_id": chat}</code></pre>
+      <p>其他不動。PDF 附件流程保持。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:跑 notify test</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/test_notify_telegram.py -v</div>
+      <p class="expected"><span class="label">預期:</span>6 個 test 全 PASS(原 4 + 新 2)。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 5:跑整套</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/ -v</div>
+      <p class="expected"><span class="label">預期:</span>全部 PASS。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 6:Commit</div>
+      <pre><code>git add finance-workflows/scripts/notify_telegram.py finance-workflows/tests/test_notify_telegram.py
+git commit -m "feat(telegram): prefer co-located _brief.md as Telegram body when present
+
+Lets a workflow author a custom Markdown shape for its Telegram message
+without changing the notifier. When _brief.md sits next to the output HTML,
+its raw content becomes the sendMessage text. Otherwise, the existing
+history.jsonl-derived summary path is used unchanged — so the 4 existing
+workflows are unaffected. Built for serenity-digest's Tier 1/2/3 layout
+but reusable by any workflow.
+
+Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;"
+git push origin main</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section class="task" id="task-5">
+  <h2>Task 5: 寫 Serenity 三份 prompt</h2>
+  <div class="task-meta">
+    <span class="label">新增</span><span><code>finance-workflows/prompts/serenity-digest/framework.md</code></span>
+    <span class="label">新增</span><span><code>finance-workflows/prompts/serenity-digest/voice.md</code></span>
+    <span class="label">新增</span><span><code>finance-workflows/prompts/serenity-digest/main.md</code></span>
+  </div>
+  <div class="why">
+    <span class="label">為什麼:</span>其他 task 都是水電工程;這個 task 才是產品。
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:建 prompt 目錄</div>
+      <div class="run">mkdir -p finance-workflows/prompts/serenity-digest</div>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:寫 <code>framework.md</code></div>
+      <p>完整內容請見原 <code>.md</code> 計劃 Task 5 Step 2。重點包含:</p>
+      <ul>
+        <li><strong>Stance 詞彙對照表</strong>:把網站中文 stance label 對應到正規 English label(<code>bull_high_risk</code>、<code>watch_high_risk</code>、<code>bull</code>、<code>bear</code>、<code>caution</code>、<code>neutral</code>)</li>
+        <li><strong>Tier 規則(自適應)</strong>:Tier 1 size = priorityQueue[0].priority × 0.95 作為 cutoff,落在 cutoff 上的算進 Tier 1,3-5 檔。Tier 2 = hotStocks[tier1:tier1+8]。Tier 3 = 跟昨日 diff。</li>
+        <li><strong>新聞重要性 5 維評分(0-100)</strong>:標的優先級對應度 30 / 新聞具體性 25 / 來源權威性 15 / 時效性 15 / 與 KG 關係 15。每個維度有具體配分規則。挑 top 3;contradicts 強制納入並加 ⚠️。</li>
+        <li><strong>KG mapping</strong>:KOL 觀點 = principle(必含 quote)。Claude 延伸 = inference(無 quote)。邊用法:相同 ticker 立場不變 → refines、立場翻轉 → contradicts、inference 對 principle → aligns_to 或 contradicts。<strong>禁止</strong>用 inference 建 must_precede / reason_for(server 會擋)。沒乾淨 quote → 降級成 pattern。</li>
+        <li><strong>每日寫入硬上限</strong>:≤20 store_knowledge、≤30 connect_knowledge。</li>
+      </ul>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:寫 <code>voice.md</code></div>
+      <p>完整內容請見原 <code>.md</code> 計劃 Task 5 Step 3。重點:</p>
+      <ul>
+        <li><strong>繁體中文</strong>。Ticker 與英文專名保留原狀。簡轉繁。</li>
+        <li><strong>反模式禁用詞</strong>:強烈推薦、目標價、翻倍、必漲、必跌、穩漲、穩跌、絕對、肯定、百分百、100%。違反就改寫(強烈推薦 → 列為重點觀察;目標價 → 估值區間;等等)。</li>
+        <li><strong>偏好句型</strong>:「需要核驗 X、Y、Z」、「邊際變化」、「叙事 vs 證據」、「外溢」、「映射」、「拆解」。</li>
+        <li><strong>引用紀律</strong>:KOL 觀點不必特別標(footer 已歸因);Claude 延伸要 inline 標 <code>_[AI 推論]_</code>。不要連續複製超過 30 個中文字。</li>
+        <li><strong>長度預算</strong>:medium 模式,Tier 1 = 3-5 條(60-100 字/條)、Tier 2 = 8 條(≤40 字)、Tier 3 = 4 行內、KOL 對照 = 1-2 條(day 1 省略)、相關訊號 = top 3、Footer = 3 行。總計約 2500 字元。</li>
+      </ul>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:寫 <code>main.md</code></div>
+      <p>完整內容請見原 <code>.md</code> 計劃 Task 5 Step 4。這份是 9 步主流程,每步都要照寫:</p>
+      <ol>
+        <li><strong>抓取與解析</strong>:呼叫 <code>mcp__web-fetch__web_fetch</code> on <code>https://analysissite.vercel.app/</code>。抽出 priorityQueue / hotStocks / feedItems / metrics / distribution。&lt; 1000 中文字視為失敗 → 設 <code>[STATUS]</code> banner。</li>
+        <li><strong>跟昨日 diff</strong>:讀 <code>_history.jsonl</code>,挑日期早於今天的最新一筆。計算 newInTop10 / droppedFromTop10 / priorityMovers。首跑用空集合 + 標「首次運行」。</li>
+        <li><strong>KG retrieval(top 3)</strong>:對 priorityQueue 前 3 個 ticker 各跑 <code>mcp__knowledge-graph__search_memory</code>。Day 1 預期回空,沒關係。</li>
+        <li><strong>新聞評分</strong>:對 feedItems 套 framework.md 的 5 維評分,挑 top 3。contradicts 強制納入。</li>
+        <li><strong>寫 HTML 存檔</strong>:用 Write 寫 <code>${OUTPUT_PATH}</code>,完整 9 區塊(header / metrics / priorityQueue / hotStocks / distribution / diff / KG context / 評分後新聞 / footer)。輕量 inline CSS。</li>
+        <li><strong>寫 <code>_brief.md</code>(Telegram 內文)</strong>:照 docs/07 排版範本。Day 1 略去 KOL 對照段。Anti-pattern 掃描後才寫檔。</li>
+        <li>
+          <strong>KG 寫入</strong>:預算 ≤20 nodes / ≤30 edges。
+          <ul>
+            <li>7a — KOL principle(priorityQueue top 5):必含 verbatim quote(≤50 字),沒乾淨 quote 就降級成 pattern。<code>source: "serenity-digest"</code>、<code>metadata.workflow: "serenity-digest"</code>、<code>metadata.ticker: ...</code>。</li>
+            <li>7b — 跟昨日 node 連邊:立場不變 + priority ↑ → refines;立場翻轉 → contradicts。要 source_session。</li>
+            <li>7c — Claude inference(top 3):不要 quote;可選 aligns_to 連到對應 principle。不能用 must_precede / reason_for。</li>
+            <li>7d — 任何 KG call 失敗就 log 後繼續,不要中斷 workflow。超過上限就停寫。</li>
+          </ul>
+        </li>
+        <li><strong>追加 history line</strong>:在 <code>_history.jsonl</code> 寫一行 JSON(date, fetchedAt, metrics, topTickers, stances, priorities, newInTop10, droppedFromTop10, priorityMovers, writes, kg_node_ids, status)。明日 Step 2 會讀。</li>
+        <li><strong>完成</strong>:stdout 印一行 summary,例:<code>serenity-digest done: 10 tickers, 4 KG principle nodes, 2 inferences, 5 edges, brief 2347 chars</code>。</li>
+      </ol>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 5:檢查 prompt 檔案的 ${...} 替換點</div>
+      <pre><code>for f in prompts/serenity-digest/*.md; do
+  echo "=== $f ==="
+  wc -l "$f"
+  grep -oE '\$\{[A-Z_]+\}' "$f" | sort -u
+done</code></pre>
+      <p class="expected"><span class="label">預期:</span>各檔行數合理(framework ~90、voice ~50、main ~250+)。grep 只出現 <code>${DATE}</code>、<code>${OUTPUT_PATH}</code>、<code>${WORKFLOW_NAME}</code>。出現未知 key 要修。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 6:Commit</div>
+      <pre><code>git add finance-workflows/prompts/serenity-digest/
+git commit -m "feat(prompts): add serenity-digest framework / voice / main prompts
+
+framework.md — stance vocabulary, adaptive tier rule, 5-dim news scoring,
+KG mapping (principle vs inference, allowed edge types), daily caps.
+voice.md — Traditional Chinese rule, anti-pattern banned phrases,
+KOL-style preferred phrasings, citation discipline, length budget.
+main.md — full 9-step orchestration: fetch → diff → KG retrieve → score →
+HTML archive → _brief.md → KG write (principles + inferences + edges) →
+history.jsonl line. Aligns with serenity-digest-spec docs/01-07 but
+adapted to finance-workflows' file layout and runner conventions.
+
+Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;"
+git push origin main</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section class="task" id="task-6">
+  <h2>Task 6: 建立 <code>workflows/serenity-digest.json</code></h2>
+  <div class="task-meta">
+    <span class="label">新增</span><span><code>finance-workflows/workflows/serenity-digest.json</code></span>
+    <span class="label">新增</span><span><code>finance-workflows/tests/test_serenity_workflow_loads.py</code></span>
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:寫 workflow JSON</div>
+      <pre><code>{
+  "$schema_version": 1,
+  "name": "serenity-digest",
+  "description": "Daily distillation of analysissite.vercel.app — Tier 1/2/3 digest + KG memory of KOL views",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 40,
+  "sources": [
+    { "kind": "web", "name": "analysissite", "url": "https://analysissite.vercel.app/" }
+  ],
+  "tools": ["web-fetch", "knowledge-graph"],
+  "prompts": [
+    "prompts/shared/faithfulness.md",
+    "prompts/serenity-digest/framework.md",
+    "prompts/serenity-digest/voice.md",
+    "prompts/serenity-digest/main.md"
+  ],
+  "output": "reports/serenity-digest/{date}.html",
+  "post": { "pdf": false, "telegram": "TELEGRAM_TOPIC_SERENITY" },
+  "history": {
+    "format": "jsonl",
+    "summarize_with": "claude-haiku-4-5",
+    "fields": ["topTickers", "stances", "priorities", "newInTop10", "droppedFromTop10", "priorityMovers", "metrics", "writes", "kg_node_ids", "status"]
+  }
+}</code></pre>
+      <p>說明:<code>max_turns: 40</code> 較低是因為任務收斂(web_fetch + KG calls 都是有界的);<code>pdf: false</code>;<code>history.summarize_with</code> 是 Haiku 後處理填補 main prompt 沒寫到的欄位。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:寫 smoke test</div>
+      <p>建 <code>finance-workflows/tests/test_serenity_workflow_loads.py</code>:</p>
+      <pre><code>"""Smoke test that workflows/serenity-digest.json parses correctly via the
+shared loader, and that its declared tools are all in the MCP template +
+TOOL_MAP. Catches typos in the JSON or unregistered MCPs early."""
+import importlib.util, json, pathlib
+
+
+HERE = pathlib.Path(__file__).resolve().parents[1]
+
+
+def _load(modname, relpath):
+    p = HERE / relpath
+    spec = importlib.util.spec_from_file_location(modname, p)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
+
+
+def test_serenity_workflow_json_loads():
+    workflow = _load("workflow", "workflow.py")
+    cfg = workflow.load_workflow("serenity-digest", HERE)
+    assert cfg.name == "serenity-digest"
+    assert cfg.tools == ["web-fetch", "knowledge-graph"]
+    assert cfg.post.telegram == "TELEGRAM_TOPIC_SERENITY"
+    assert cfg.post.pdf is False
+    assert cfg.output == "reports/serenity-digest/{date}.html"
+
+
+def test_serenity_tools_are_in_template():
+    tmpl = json.loads((HERE / "mcp" / "mcp.json.tmpl").read_text("utf-8"))
+    available = set(tmpl["mcpServers"].keys())
+    workflow_json = json.loads(
+        (HERE / "workflows" / "serenity-digest.json").read_text("utf-8"))
+    for t in workflow_json["tools"]:
+        assert t in available, f"workflow tool {t!r} not in mcp.json.tmpl"
+
+
+def test_serenity_tools_are_in_tool_map():
+    text = (HERE / "run-workflow.py").read_text("utf-8")
+    assert '"web-fetch"' in text
+    assert '"knowledge-graph"' in text
+    assert "store_knowledge" in text
+    assert "search_memory" in text</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:跑 smoke test</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/test_serenity_workflow_loads.py -v</div>
+      <p class="expected"><span class="label">預期:</span>3 個 test 全 PASS。失敗的話:JSON 解析錯 → 改 JSON;template 缺工具 → 回到 Task 2 Step 3;TOOL_MAP 缺項 → 回到 Task 2 Step 2。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:跑整套</div>
+      <div class="run">mcp/.venv/bin/python -m pytest tests/ -v</div>
+      <p class="expected"><span class="label">預期:</span>全部 PASS。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 5:Commit</div>
+      <pre><code>git add finance-workflows/workflows/serenity-digest.json finance-workflows/tests/test_serenity_workflow_loads.py
+git commit -m "feat(workflow): add serenity-digest config + smoke test
+
+Declares web-fetch + knowledge-graph tools, the 4 prompt files, output path
+under reports/serenity-digest/, Telegram topic env-var binding, and the
+history schema fields tomorrow's diff will need. Smoke test catches typos
+and verifies the workflow's tools are both registered in mcp.json.tmpl and
+known to run-workflow.py's TOOL_MAP.
+
+Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;"
+git push origin main</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section class="task" id="task-7">
+  <h2>Task 7: 端到端手動驗證</h2>
+  <div class="task-meta">
+    <span class="label">修改</span><span><code>finance-workflows/.env</code>(使用者填 <code>TELEGRAM_TOPIC_SERENITY=...</code>)</span>
+    <span class="label">檢視</span><span>產出的 HTML / _brief.md / _history.jsonl</span>
+  </div>
+  <div class="why">
+    <span class="label">為什麼:</span>水電都接好了,排定每日 cron 前先手跑一次確認 Telegram 真的到、長相對、KG 寫成功。這一步資訊量最高 — 有 bug 就在這裡發現,iterate prompt 或 runner,再排程。
+  </div>
+  <div class="card warn">
+    <strong>注意:</strong>本 task 需要使用者親自介入(開 Telegram topic + 編輯 .env)。子 agent 沒辦法獨立完成。
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:使用者建 Telegram forum topic</div>
+      <p>在共用 supergroup 開新 forum topic,例如「Serenity」。拿 message_thread_id(發個測試訊息看 URL 或用 Bot API)。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:把 topic id 寫進 <code>.env</code></div>
+      <p>使用者編輯 <code>finance-workflows/.env</code>(gitignored),追加:</p>
+      <pre><code>TELEGRAM_TOPIC_SERENITY=&lt;Step 1 拿到的 topic id&gt;</code></pre>
+      <p>Agent 不要寫 secret — 請使用者自己加。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:手動跑一次 workflow</div>
+      <div class="run">mcp/.venv/bin/python run-workflow.py serenity-digest</div>
+      <p class="expected"><span class="label">預期:</span>30-90 秒內跑完。stdout/stderr 應出現:<code>[run] serenity-digest → ...</code> / 沒有 <code>[claude] exited</code> / 沒有 <code>[mcp_render]</code> / 沒有 <code>[telegram] skipped</code> / 最後 main.md Step 9 印的 summary。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:檢查產出的 3 個檔案</div>
+      <div class="run">ls -la reports/serenity-digest/</div>
+      <p>應該有 <code>2026-05-29.html</code> / <code>_brief.md</code> / <code>_history.jsonl</code>。</p>
+      <p>打開 <code>_brief.md</code> 目視確認:</p>
+      <ul>
+        <li>標題 <code>📊 *2026-05-29 Serenity 日報*</code></li>
+        <li>Tier 1 有 3-5 條(ticker / priority / stance / reasoning / 驗證)</li>
+        <li>Tier 2 有 8 條</li>
+        <li>Tier 3 顯示「首次運行,無昨日對照」</li>
+        <li>KOL 對照段被略掉(KG 還空)</li>
+        <li>相關訊號最多 3 條</li>
+        <li>Footer 有歸因句 + <code>KG N nodes</code></li>
+        <li>全部繁體中文</li>
+        <li>沒禁用詞:<code>grep -E '強烈推薦|目標價|翻倍|必漲|必跌|100%' _brief.md</code> 應該無輸出</li>
+      </ul>
+      <p>讀 <code>_history.jsonl</code> 確認有一行,包含 schema 各欄位。瀏覽器打開 HTML 確認排版正常。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 5:確認 Telegram 收到</div>
+      <p>進 Telegram 群、進 Serenity topic。應該有一則新訊息 = <code>_brief.md</code> 用 Telegram Markdown 渲染。沒有 PDF(workflow <code>pdf: false</code>)。如果排版亂(<code>*</code> 或 <code>_</code> 沒收尾),回去調 main.md Step 6 範本。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 6:確認 KG 寫入</div>
+      <pre><code>node -e "
+const db = require('better-sqlite3')('../mcp/knowledge-graph/knowledge.db', {readonly: true});
+const rows = db.prepare(\"SELECT id, name, trust, json_extract(metadata, '\$.ticker') AS ticker, created_at FROM nodes WHERE source = 'serenity-digest' ORDER BY created_at DESC LIMIT 20\").all();
+console.log('serenity-digest nodes today:', rows.length);
+rows.forEach(r =&gt; console.log(\`  \${r.created_at}  \${r.trust.padEnd(10)}  \${(r.ticker||'').padEnd(6)}  \${r.name}\`));
+"</code></pre>
+      <p class="expected"><span class="label">預期:</span>≤20 條今日節點,principle 跟 inference 各幾條,metadata.ticker 有填。0 條 = KG MCP 沒起來,查 <code>reports/serenity-digest/_logs/&lt;date&gt;-&lt;ts&gt;.log</code> 的 <code>[mcp]</code> 行。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 7:有問題就 iterate</div>
+      <p>Step 4-6 有問題就回去改對應 prompt(多半是 main.md Step 6 範本或 Step 7 schema),然後 <code>FINANCE_WORKFLOWS_DATE=2026-05-29 mcp/.venv/bin/python run-workflow.py serenity-digest</code> 蓋掉今天輸出重跑。改完 commit:</p>
+      <pre><code>git add finance-workflows/prompts/serenity-digest/
+git commit -m "fix(serenity prompts): &lt;what you fixed&gt;
+
+Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;"
+git push origin main</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 8:確認 OK 就進下一個 task</div>
+      <p>沒問題就進 Task 8(裝 launchd)。本 task 沒有自己的 commit。</p>
+    </li>
+  </ol>
+</section>
+
+<section class="task" id="task-8">
+  <h2>Task 8: 安裝 launchd 每日 06:00 排程</h2>
+  <div class="task-meta">
+    <span class="label">新增</span><span><code>~/Library/LaunchAgents/com.financeworkflows.serenity-digest.plist</code></span>
+  </div>
+  <div class="why">
+    <span class="label">為什麼:</span>4 個現有 plist 都住在 <code>~/Library/LaunchAgents/</code>,不入 repo,我們照辦。每天 06:00 fire <code>mcp/.venv/bin/python run-workflow.py serenity-digest</code>。
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-title">Step 1:寫 plist</div>
+      <p>建 <code>~/Library/LaunchAgents/com.financeworkflows.serenity-digest.plist</code>(若 repo 路徑不一樣,改絕對路徑):</p>
+      <pre><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
+&lt;dict&gt;
+  &lt;key&gt;Label&lt;/key&gt;
+  &lt;string&gt;com.financeworkflows.serenity-digest&lt;/string&gt;
+  &lt;key&gt;ProgramArguments&lt;/key&gt;
+  &lt;array&gt;
+    &lt;string&gt;/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/mcp/.venv/bin/python&lt;/string&gt;
+    &lt;string&gt;/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/run-workflow.py&lt;/string&gt;
+    &lt;string&gt;serenity-digest&lt;/string&gt;
+  &lt;/array&gt;
+  &lt;key&gt;WorkingDirectory&lt;/key&gt;
+  &lt;string&gt;/Users/pochenkuo/AI/new_financial-report-system/finance-workflows&lt;/string&gt;
+  &lt;key&gt;EnvironmentVariables&lt;/key&gt;
+  &lt;dict&gt;
+    &lt;key&gt;PATH&lt;/key&gt;
+    &lt;string&gt;/Users/pochenkuo/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin&lt;/string&gt;
+  &lt;/dict&gt;
+  &lt;key&gt;StandardOutPath&lt;/key&gt;
+  &lt;string&gt;/Users/pochenkuo/Library/Logs/financeworkflows-serenity-digest.log&lt;/string&gt;
+  &lt;key&gt;StandardErrorPath&lt;/key&gt;
+  &lt;string&gt;/Users/pochenkuo/Library/Logs/financeworkflows-serenity-digest.log&lt;/string&gt;
+  &lt;key&gt;StartCalendarInterval&lt;/key&gt;
+  &lt;dict&gt;
+    &lt;key&gt;Hour&lt;/key&gt;
+    &lt;integer&gt;6&lt;/integer&gt;
+    &lt;key&gt;Minute&lt;/key&gt;
+    &lt;integer&gt;0&lt;/integer&gt;
+  &lt;/dict&gt;
+  &lt;key&gt;RunAtLoad&lt;/key&gt;
+  &lt;false/&gt;
+&lt;/dict&gt;
+&lt;/plist&gt;</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 2:load job</div>
+      <div class="run">launchctl load ~/Library/LaunchAgents/com.financeworkflows.serenity-digest.plist</div>
+      <p>沒輸出 = 成功。出現 "service already loaded" 就先 unload 再 load:</p>
+      <div class="run">launchctl unload ~/Library/LaunchAgents/com.financeworkflows.serenity-digest.plist && launchctl load ~/Library/LaunchAgents/com.financeworkflows.serenity-digest.plist</div>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 3:確認 job 註冊</div>
+      <div class="run">launchctl list | grep financeworkflows</div>
+      <p class="expected"><span class="label">預期:</span>看到 <code>-  0  com.financeworkflows.serenity-digest</code>。<code>-</code> 表示尚未跑過,正常。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 4:確認排定時間</div>
+      <div class="run">launchctl print gui/$(id -u)/com.financeworkflows.serenity-digest | grep -A2 "schedule"</div>
+      <p class="expected"><span class="label">預期:</span>看到 <code>hour = 6, minute = 0</code>。</p>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 5:確認 <code>pmset repeat</code> wake 時間</div>
+      <div class="run">pmset -g sched</div>
+      <p>應該看到類似 <code>wakeorpoweron at 07:25:00 every day</code>(記憶提醒)。</p>
+      <div class="card warn">
+        <strong>注意:</strong>06:00 早於 wake 時間 — 蓋蓋子的話 06:00 cron 會延後到 ~07:25 才補跑。<strong>使用者要決定</strong>:接受延後 / 或往前調 wake:
+        <pre><code>sudo pmset repeat wakeorpoweron MTWRFSU 05:55:00</code></pre>
+        後者會改全域 wake 排程,先告知使用者再動。
+      </div>
+    </li>
+
+    <li class="step">
+      <div class="step-title">Step 6:沒 commit</div>
+      <p>plist 不在 repo 內(現有 4 個也都沒入),沒什麼好 commit。</p>
+    </li>
+  </ol>
+</section>
+
+<hr>
+
+<section id="self-review">
+  <h2>自我檢查</h2>
+
+  <h3>Spec 覆蓋對照</h3>
+  <table>
+    <thead><tr><th>spec 章節</th><th>由本 plan 哪個 task 覆蓋</th></tr></thead>
+    <tbody>
+      <tr><td><code>00-system-overview.md</code> 三層架構</td><td>Tasks 2 / 5 / 7(KG layer + Persona 延後 + Automation via launchd)</td></tr>
+      <tr><td><code>01-scraping.md</code> 解析規則 / 容錯</td><td>main.md Step 1 + Step 5 STATUS banner</td></tr>
+      <tr><td><code>02-knowledge-graph.md</code> KG schema</td><td>framework.md "KG mapping" + main.md Step 7</td></tr>
+      <tr><td><code>03-persona-distillation.md</code></td><td><strong>延後到 Phase 2</strong>(架構決策 #5)</td></tr>
+      <tr><td><code>04-daily-workflow.md</code> 端到端時序</td><td>main.md Steps 1-9</td></tr>
+      <tr><td><code>05-stock-strategy.md</code> tier 規則</td><td>framework.md "Tier 規則"</td></tr>
+      <tr><td><code>06-news-scoring.md</code> 5 維評分</td><td>framework.md "新聞重要性評分"</td></tr>
+      <tr><td><code>07-telegram-format.md</code> Tier 1/2/3 排版</td><td>main.md Step 6 範本 + voice.md 長度預算</td></tr>
+      <tr><td><code>08-storage.md</code> 資料夾配置</td><td><strong>調整</strong>:報告在 <code>finance-workflows/reports/serenity-digest/</code>;KG 在專案根;不用 config.json,用 <code>.env</code></td></tr>
+      <tr><td><code>09-evolution.md</code> 90 天決策</td><td>Phase 1 不在範圍內</td></tr>
+      <tr><td><code>10-acceptance.md</code> 驗收</td><td>Task 7 Steps 4-6</td></tr>
+      <tr><td><code>prompts/daily-brief.md</code></td><td>大部分內聯進 main.md Step 6</td></tr>
+      <tr><td><code>prompts/weekly-reflection.md</code></td><td><strong>延後</strong></td></tr>
+      <tr><td><code>prompts/distillation-bootstrap.md</code></td><td><strong>延後</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Placeholder 掃描</h3>
+  <p>已搜「TODO」「TBD」「實作 later」「適當的」「類似於」— 都不在 plan 內。main.md 內容完整;framework.md / voice.md 同;test 都有完整 code;commit message 都有完整內容。</p>
+
+  <h3>型別一致性</h3>
+  <ul>
+    <li><code>render_mcp(..., root_dir=...)</code> 簽章在 Task 1 實作與 Task 2 Step 1 呼叫點一致</li>
+    <li><code>_brief.md</code> 檔名在 Task 4 Step 3、Task 5 Step 4 main.md Step 6、Task 7 驗證點一致</li>
+    <li><code>TELEGRAM_TOPIC_SERENITY</code> 在 Task 6 workflow JSON 與 Task 7 .env 一致</li>
+    <li>Source tag <code>"serenity-digest"</code> 在 framework.md、main.md Steps 7a/7c、Task 7 Step 6 SQL 一致</li>
+  </ul>
+
+  <h3>範圍檢查</h3>
+  <p>單一子系統(一個新 workflow + 小幅 runner 擴充)。不需要再拆。</p>
+
+  <h3>暴露給使用者的風險</h3>
+  <ul>
+    <li>Task 7 Step 5 — 06:00 wake 排程。使用者要決定要不要調 <code>pmset repeat</code>。</li>
+    <li>Task 1 — <code>@ROOT@</code> 沒傳 <code>root_dir</code> 會保持字面。既有 test 沒傳,確認過<code>test_render_root_unset_leaves_placeholder_literal</code> 把這個 visible 行為釘住。</li>
+    <li>Task 5 main.md — 把很多事擠在一個 prompt(抓 + diff + 撈 + 評 + HTML + brief + KG + history)。模型沒用完 max_turns 就乾淨退出;超出就靠 max_turns=40 攔住。首次跑完再 iterate。</li>
+  </ul>
+</section>
+
+<section class="handoff" id="handoff">
+  <h2>執行交接</h2>
+  <p>Plan 已存到 <code>docs/superpowers/plans/2026-05-29-serenity-digest-phase1-kg.md</code>(本 HTML 是繁中閱讀版)。兩個執行模式:</p>
+  <ol>
+    <li><strong>Subagent-Driven(推薦給機械式 task)</strong>:dispatch fresh subagent per task,兩階段 review 後再進下一 task。Task 7 仍需使用者介入。</li>
+    <li><strong>Inline Execution(此 plan 我推薦的)</strong>:同個 conversation 一個 task 一個 task 做,每個 task commit 後停一下讓你看。</li>
+  </ol>
+  <p>推薦 Inline,理由:Task 7 需要使用者中途填 Telegram topic + .env;Tasks 2/3 都改 <code>run-workflow.py</code>,sequential 比較穩;per-slice commit/push(CLAUDE.md 規則)正好對應 inline 步調。</p>
+</section>
+
+</div>
+</body>
+</html>
