@@ -7,14 +7,19 @@ class McpRenderError(Exception):
     pass
 
 
-def render_mcp(*, tools, mcp_dir, python_bin, tmpl_path, out_path, env_subs=None):
+def render_mcp(*, tools, mcp_dir, python_bin, tmpl_path, out_path,
+               env_subs=None, root_dir=None):
     """Read tmpl, parse JSON, retain only the requested server keys, substitute
-    @PY@/@MCPDIR@ in command/args and any `@KEY@` from `env_subs` in env values,
-    write to out_path. Returns the absolute out_path as a string.
+    @PY@/@MCPDIR@/@ROOT@ in command/args and any `@KEY@` from `env_subs` in env
+    values, write to out_path. Returns the absolute out_path as a string.
+
+    @ROOT@ is the project root (one level above finance-workflows/), used by
+    MCPs that live outside finance-workflows (e.g. mcp/knowledge-graph).
 
     Servers whose template has an env entry referencing `@KEY@` but `env_subs`
     does not include that KEY are still rendered — their `@KEY@` placeholder
     remains literal so failures are visible at MCP startup rather than silent.
+    @ROOT@ follows the same rule: if root_dir is None, it stays literal.
 
     Raises McpRenderError if any requested tool isn't in the template.
     """
@@ -29,8 +34,12 @@ def render_mcp(*, tools, mcp_dir, python_bin, tmpl_path, out_path, env_subs=None
     for name in tools:
         entry = json.loads(json.dumps(tmpl["mcpServers"][name]))  # deep copy
         entry["command"] = entry["command"].replace("@PY@", python_bin)
-        entry["args"] = [a.replace("@MCPDIR@", mcp_dir).replace("@PY@", python_bin)
-                         for a in entry.get("args", [])]
+        def _sub(s):
+            s = s.replace("@MCPDIR@", mcp_dir).replace("@PY@", python_bin)
+            if root_dir is not None:
+                s = s.replace("@ROOT@", root_dir)
+            return s
+        entry["args"] = [_sub(a) for a in entry.get("args", [])]
         if "env" in entry:
             new_env = {}
             for k, v in entry["env"].items():

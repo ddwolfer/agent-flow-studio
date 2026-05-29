@@ -82,3 +82,39 @@ def test_derive_allowed_tools_from_servers():
         "mcp__yt-dlp__ytdlp_transcript_page",
         "Write", "Read",
     ]
+
+
+def test_render_substitutes_root(tmp_path):
+    """@ROOT@ in args resolves to root_dir, distinct from @MCPDIR@."""
+    m = _load()
+    tmpl = tmp_path / "mcp.json.tmpl"
+    tmpl.write_text("""{
+      "mcpServers": {
+        "kg": {"command": "node", "args": ["@ROOT@/mcp/knowledge-graph/main.js"]}
+      }
+    }""", "utf-8")
+    out = tmp_path / "mcp.json"
+    m.render_mcp(tools=["kg"], mcp_dir=str(tmp_path / "fw" / "mcp"),
+                 python_bin="/x/py", tmpl_path=tmpl, out_path=out,
+                 root_dir=str(tmp_path / "root"))
+    cfg = json.loads(out.read_text("utf-8"))
+    assert cfg["mcpServers"]["kg"]["args"][0] == \
+        f"{tmp_path / 'root'}/mcp/knowledge-graph/main.js"
+
+
+def test_render_root_unset_leaves_placeholder_literal(tmp_path):
+    """If root_dir is None, @ROOT@ stays literal (parallel to env_subs behaviour)
+    so a misconfigured caller fails loud at MCP startup, not silently."""
+    m = _load()
+    tmpl = tmp_path / "mcp.json.tmpl"
+    tmpl.write_text("""{
+      "mcpServers": {
+        "kg": {"command": "node", "args": ["@ROOT@/mcp/knowledge-graph/main.js"]}
+      }
+    }""", "utf-8")
+    out = tmp_path / "mcp.json"
+    m.render_mcp(tools=["kg"], mcp_dir=str(tmp_path / "fw" / "mcp"),
+                 python_bin="/x/py", tmpl_path=tmpl, out_path=out)
+    cfg = json.loads(out.read_text("utf-8"))
+    assert cfg["mcpServers"]["kg"]["args"][0] == \
+        "@ROOT@/mcp/knowledge-graph/main.js"
