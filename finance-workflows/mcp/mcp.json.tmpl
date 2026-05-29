@@ -6,6 +6,7 @@
     "fred":          { "command": "@PY@", "args": ["@MCPDIR@/servers/fred_server.py"], "env": { "FRED_API_KEY": "@FREDKEY@" } },
     "yahoo-finance": { "command": "@PY@", "args": ["@MCPDIR@/servers/yahoo_server.py"] },
     "twse":          { "command": "@PY@", "args": ["@MCPDIR@/servers/twse_server.py"] },
-    "edgar":         { "command": "@PY@", "args": ["@MCPDIR@/servers/edgar_server.py"] }
+    "edgar":         { "command": "@PY@", "args": ["@MCPDIR@/servers/edgar_server.py"] },
+    "knowledge-graph": { "command": "node", "args": ["@ROOT@/mcp/knowledge-graph/main.js"] }
   }
 }

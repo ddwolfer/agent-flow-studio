@@ -37,6 +37,13 @@ TOOL_MAP = {
         "edgar_latest_annual",
         "edgar_fetch_text",
     ],
+    "knowledge-graph": [
+        "store_knowledge", "connect_knowledge", "update_knowledge",
+        "forget_knowledge", "search_memory", "get_knowledge",
+        "list_knowledge", "traverse_graph",
+        "record_experience", "recall_experience",
+        "maintain_graph", "memory_stats",
+    ],
 }
 
 
@@ -202,7 +209,8 @@ def main(argv=None):
         mcp_json_path = render_mcp(tools=cfg.tools, mcp_dir=mcp_dir,
                                    python_bin=_python_bin(root),
                                    tmpl_path=tmpl, out_path=out_mcp,
-                                   env_subs=_load_env_subs(root))
+                                   env_subs=_load_env_subs(root),
+                                   root_dir=str(root.parent))
     except (FileNotFoundError, McpRenderError) as e:
         print(f"[mcp_render] {e}", file=sys.stderr); return 3
 
