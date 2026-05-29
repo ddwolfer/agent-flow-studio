@@ -1,0 +1,106 @@
+{
+  "$schema": "kg-conventions-v1",
+  "description": "Serenity Digest 在 knowledgeGraph MCP 上的型別約定",
+  "node_types": {
+    "rule":        { "use": "投研守則", "example": "先驗證 EDGAR 披露，再相信新聞標題" },
+    "procedure":   { "use": "操作流程", "example": "進入 watchlist 前必跑：行業壓力 → 公司財報結構 → 流動性" },
+    "observation": { "use": "市場事件 / 現象", "example": "2026-05-27 NVDA 出口管制新聞發布" },
+    "insight":     { "use": "從觀察推導的見解", "example": "KOL 用『拆解客戶集中度』句型 = 想引入懷疑" },
+    "core":        { "use": "跨多檔重複的核心觀點", "example": "政策叙事必須核驗文件，不等同於公司獲得訂單" },
+    "preference":  { "use": "KOL 的偏好取向", "example": "KOL 偏好半導體 / 光通信集群" }
+  },
+  "trust_levels": {
+    "principle": {
+      "description": "KOL 親口說的",
+      "requires_quote": true,
+      "min_quote_chars": 20,
+      "initial_stability_days": 30,
+      "examples": ["需要核验 EU 文件、公司公告、客戶合同"]
+    },
+    "pattern": {
+      "description": "跨 5+ 檔重複出現，或 30 天內 3+ 次驗證",
+      "requires_quote": false,
+      "initial_stability_days": 7,
+      "examples": ["KOL 對 800G 光通信標的多次採『驗證導向』語氣"]
+    },
+    "inference": {
+      "description": "Claude 自己推導的，永久標記",
+      "requires_quote": false,
+      "initial_stability_days": 3,
+      "can_create_causal_edges": false,
+      "can_promote_to_principle": false,
+      "examples": ["KOL 對 SIVE 的政策叙事可能高估—— 未見訂單轉換證據"]
+    }
+  },
+  "metadata_schema": {
+    "required": ["ticker", "category", "first_seen"],
+    "optional": ["sector", "stance", "last_confirmed", "confidence", "evidence_refs"],
+    "ticker":          { "type": "string|null", "example": "NVDA" },
+    "sector":          { "type": "string|null", "example": "半導體" },
+    "stance":          {
+      "type": "enum",
+      "values": ["bull", "bear", "neutral", "watch", "watch_high_risk", "bull_high_risk", "caution"]
+    },
+    "category": {
+      "type": "enum",
+      "values": ["fundamental", "creative"],
+      "description": "fundamental 永不衰減；creative 會衰減、可被反例挑戰"
+    },
+    "first_seen":     { "type": "ISO date", "example": "2026-05-27" },
+    "last_confirmed": { "type": "ISO date" },
+    "confidence":     { "type": "float", "range": "0.0 - 1.0" },
+    "evidence_refs":  {
+      "type": "array of strings",
+      "description": "Phase D 預留欄位，Phase E 才啟用引用",
+      "example": ["news/2026-08-29-reuters-NVDA-earnings.json"]
+    }
+  },
+  "edge_types": {
+    "must_precede":     "A 必先於 B（時序或邏輯）",
+    "requires_reading": "看 A 前要先看 B",
+    "refines":          "A 是 B 的細化",
+    "contradicts":      "A 反駁 B",
+    "reason_for":       "A 是 B 的原因",
+    "causes":           "A 導致 B",
+    "implies":          "A 暗示 B",
+    "aligns_to":        "A 對齊 B 的框架",
+    "tends_to":         "A 傾向發展為 B",
+    "observed_in":      "A 在 B 中被觀察到"
+  },
+  "edge_restrictions": {
+    "inference_nodes_cannot_originate": ["must_precede", "reason_for", "causes"],
+    "rationale": "Anti-fabrication: Claude 推論不能宣告因果，需要 principle / pattern 等級才能"
+  },
+  "source_labels": {
+    "serenity-site":  "從 analysissite 爬下來的 KOL 觀點",
+    "claude-daily":   "Claude 在日常 brief 推論的內容",
+    "claude-reflect": "Claude 在週反思推論的內容",
+    "nuwa-v1":        "nuwa 蒸餾出來的元觀點 (v1)",
+    "nuwa-v2":        "nuwa 蒸餾出來的元觀點 (v2)",
+    "manual":         "owner 手動加入（極少數）"
+  },
+  "memory_levels": {
+    "1": "New (預設新節點)",
+    "2": "Verifying (跨 3+ session 被存取)",
+    "3": "Consolidated (14 天 + access ≥ 5，不再自動過期)",
+    "4": "Core (fundamental 節點 或 access ≥ 50)"
+  },
+  "decay_parameters": {
+    "fundamental_stability_days": 365,
+    "principle_creative_fast_half_life_days": 30,
+    "principle_creative_slow_half_life_days": 300,
+    "pattern_fast_half_life_days": 7,
+    "pattern_slow_half_life_days": 70,
+    "inference_fast_half_life_days": 3,
+    "inference_slow_half_life_days": 30
+  },
+  "daily_write_caps": {
+    "max_nodes": 20,
+    "max_edges": 30,
+    "priority": [
+      "KOL principle 節點（priorityQueue top 5）",
+      "重要的 refines / contradicts 邊",
+      "Claude 對 top 3 的延伸 inference"
+    ]
+  }
+}

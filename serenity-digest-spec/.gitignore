@@ -1,0 +1,21 @@
+node_modules/
+*.log
+.DS_Store
+
+# Never commit secrets / personal data
+config.json
+*.db
+*.db-wal
+*.db-shm
+
+# Runtime outputs / user data
+raw/
+data/
+briefs/
+logs/
+pending-writes/
+
+# Editor
+.vscode/
+.idea/
+*.swp

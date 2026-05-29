@@ -1,0 +1,160 @@
+{
+  "$schema": "kg-nodes-sample-v1",
+  "description": "範例 KG 節點與邊，展示在 Serenity 語境下實際的 store_knowledge / connect_knowledge payload",
+  "nodes": [
+    {
+      "id": "node_2026-05-29_NVDA_principle_1",
+      "type": "insight",
+      "trust": "principle",
+      "content": "NVDA 高風險偏多：存儲鏈條與功率半導體線索抬高生態映射優先級",
+      "quote": "今日 01:09 的 MU/NVDA 存储链条重估和 10:24 的 800VDC 功率半导体线索共同提高了 NVDA 生态映射优先级",
+      "metadata": {
+        "ticker": "NVDA",
+        "sector": "半導體",
+        "stance": "bull_high_risk",
+        "category": "creative",
+        "first_seen": "2026-05-29",
+        "last_confirmed": "2026-05-29",
+        "confidence": 0.85,
+        "evidence_refs": []
+      },
+      "source": "serenity-site",
+      "stability": 30,
+      "memory_level": 1
+    },
+    {
+      "id": "node_2026-05-27_NVDA_principle_1",
+      "type": "insight",
+      "trust": "principle",
+      "content": "NVDA 出口管制、客戶集中、產能承諾是一手證據核心",
+      "quote": "出口管制、客户集中、产能承诺、生态投资和资本回报仍是一手证据核心",
+      "metadata": {
+        "ticker": "NVDA",
+        "sector": "半導體",
+        "stance": "bull_high_risk",
+        "category": "creative",
+        "first_seen": "2026-05-27",
+        "last_confirmed": "2026-05-29",
+        "confidence": 0.9,
+        "evidence_refs": []
+      },
+      "source": "serenity-site",
+      "stability": 32,
+      "memory_level": 2
+    },
+    {
+      "id": "node_pattern_narrative_vs_evidence",
+      "type": "core",
+      "trust": "pattern",
+      "content": "「叙事 vs 證據分離」：政策叙事/媒體標題不等同於公司獲得新訂單、收入或補貼，需獨立驗證",
+      "quote": "这仍是政策/叙事线索，不等同于公司获得新订单、收入或补贴",
+      "metadata": {
+        "ticker": null,
+        "sector": null,
+        "category": "creative",
+        "first_seen": "2026-04-12",
+        "last_confirmed": "2026-05-29",
+        "confidence": 0.92,
+        "promoted_from": [
+          "node_2026-04-12_SIVE_principle_3",
+          "node_2026-04-18_POET_principle_2",
+          "node_2026-05-03_TSLA_principle_5",
+          "node_2026-05-14_GOOGL_principle_1",
+          "node_2026-05-29_SIVE_principle_4"
+        ],
+        "evidence_refs": []
+      },
+      "source": "claude-reflect",
+      "stability": 70,
+      "memory_level": 3
+    },
+    {
+      "id": "node_2026-05-29_SIVE_inference_1",
+      "type": "insight",
+      "trust": "inference",
+      "content": "SIVE 政策叙事可能高估—— EU 政策標題擴散與實際公司收入轉換之間仍缺乏直接證據",
+      "quote": null,
+      "metadata": {
+        "ticker": "SIVE",
+        "sector": "光子",
+        "stance": "bull_high_risk",
+        "category": "creative",
+        "first_seen": "2026-05-29",
+        "confidence": 0.6,
+        "evidence_refs": []
+      },
+      "source": "claude-daily",
+      "stability": 3,
+      "memory_level": 1
+    },
+    {
+      "id": "node_anchor_sector_semiconductor",
+      "type": "core",
+      "trust": "principle",
+      "content": "行業分類：半導體",
+      "quote": null,
+      "metadata": {
+        "category": "fundamental",
+        "first_seen": "2026-05-01"
+      },
+      "source": "manual",
+      "stability": 365,
+      "memory_level": 4
+    },
+    {
+      "id": "node_anchor_stance_bull_high_risk",
+      "type": "core",
+      "trust": "principle",
+      "content": "觀點分類：bull_high_risk（看多但須以高風險檔位處理）",
+      "quote": null,
+      "metadata": {
+        "category": "fundamental",
+        "first_seen": "2026-05-01"
+      },
+      "source": "manual",
+      "stability": 365,
+      "memory_level": 4
+    }
+  ],
+  "edges": [
+    {
+      "from": "node_2026-05-29_NVDA_principle_1",
+      "to": "node_2026-05-27_NVDA_principle_1",
+      "edge": "refines",
+      "reasoning": "今日論點延伸 5/27 的『一手證據核心』，加入 800VDC 線索作為新增邊際",
+      "weight": 0.8,
+      "created_at": "2026-05-29T06:00:25+08:00"
+    },
+    {
+      "from": "node_2026-05-29_SIVE_inference_1",
+      "to": "node_pattern_narrative_vs_evidence",
+      "edge": "aligns_to",
+      "reasoning": "SIVE 政策叙事可能高估 = 套用「叙事 vs 證據」pattern",
+      "weight": 0.85,
+      "created_at": "2026-05-29T06:00:25+08:00"
+    },
+    {
+      "from": "node_2026-05-29_NVDA_principle_1",
+      "to": "node_anchor_sector_semiconductor",
+      "edge": "observed_in",
+      "reasoning": "節點關聯到行業 anchor",
+      "weight": 1.0,
+      "created_at": "2026-05-29T06:00:25+08:00"
+    },
+    {
+      "from": "node_2026-05-29_NVDA_principle_1",
+      "to": "node_anchor_stance_bull_high_risk",
+      "edge": "observed_in",
+      "reasoning": "節點關聯到 stance anchor",
+      "weight": 1.0,
+      "created_at": "2026-05-29T06:00:25+08:00"
+    }
+  ],
+  "notes": [
+    "principle 節點都附 quote，inference 不需要。",
+    "pattern 節點有 promoted_from，記錄它從哪些 principle 升級。",
+    "anchor 節點（行業 / stance）category=fundamental，stability=365 不衰減。",
+    "inference 節點 source=claude-daily 或 claude-reflect，permanent inference label。",
+    "邊有 reasoning 欄位，記錄為什麼建立這個關係（給未來自己看）。"
+  ]
+}

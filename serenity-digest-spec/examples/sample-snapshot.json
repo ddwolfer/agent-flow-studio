@@ -1,0 +1,182 @@
+{
+  "$schema": "snapshot-v1",
+  "fetchedAt": "2026-05-29T06:00:12+08:00",
+  "source": {
+    "url": "https://analysissite.vercel.app/",
+    "siteSnapshotAt": "2026-05-29T05:50:00+08:00"
+  },
+  "metrics": {
+    "activeSignals": 445,
+    "coverage": 703,
+    "delta24h": 18,
+    "delta7d": 62,
+    "delta30d": 184,
+    "newsDriven": 79
+  },
+  "priorityQueue": [
+    {
+      "rank": 1,
+      "ticker": "NVDA",
+      "priority": 432,
+      "stance": "bull_high_risk",
+      "aiChange": "xhigh",
+      "summary": "存儲鏈條與功率半導體線索抬高生態映射優先級。需驗證：客戶集中度、產能承諾、出口管制邊際影響。",
+      "tags": ["看多", "高风险偏多", "GPT xhigh", "24h"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 2,
+      "ticker": "SIVE",
+      "priority": 418,
+      "stance": "bull_high_risk",
+      "aiChange": "xhigh",
+      "summary": "EU Chips Act 2 政策讀穿，外部標題擴散推升優先級。需驗證 EU 文件、公司公告、客戶合同。",
+      "tags": ["看多", "高风险偏多", "GPT xhigh"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 3,
+      "ticker": "LITE",
+      "priority": 410,
+      "stance": "bull_high_risk",
+      "aiChange": "xhigh",
+      "summary": "光通信鏈條受 SIVE/AAOI 注意力外溢影響，800G/1.6T 模塊需求樣本。",
+      "tags": ["看多", "高风险偏多", "GPT xhigh"],
+      "updatedAt": "2026-05-29 05:50"
+    }
+  ],
+  "hotStocks": [
+    {
+      "rank": 1, "ticker": "NVDA", "priority": 432,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "存儲鏈條與功率半導體線索...",
+      "tags": ["看多", "高风险偏多", "GPT xhigh", "24h", "新闻 10", "披露 3"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 2, "ticker": "SIVE", "priority": 418,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "EU Chips Act 2 政策讀穿...",
+      "tags": ["看多", "高风险偏多", "GPT xhigh", "24h", "7天 24"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 3, "ticker": "LITE", "priority": 410,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "光通信鏈條受 SIVE/AAOI 外溢...",
+      "tags": ["看多", "高风险偏多", "GPT xhigh", "新闻 10"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 4, "ticker": "IREN", "priority": 380,
+      "stance": "caution", "aiChange": "xhigh",
+      "summary": "作者偏空與價格動量向上方向相反；重點拆分合同質量與現金流。",
+      "tags": ["看空", "谨慎", "新闻 10", "披露 7"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 5, "ticker": "MRVL", "priority": 344,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "定制芯片與 AWS Trainium 合作叙事強化，估值安全邊際收窄。",
+      "tags": ["看多", "高风险偏多", "GPT xhigh", "7天 4"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 6, "ticker": "AAOI", "priority": 338,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "作者分發能力提升注意力復燃概率，基本面驗證尚未出現新催化劑。",
+      "tags": ["看多", "高风险偏多", "24h", "新闻 1", "披露 5"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 7, "ticker": "AMD", "priority": 327,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "先進封裝合作與 10B 投資進一步確認 AI 需求；同行資金分流需觀察。",
+      "tags": ["看多", "高风险偏多", "GPT xhigh"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 8, "ticker": "SNDK", "priority": 320,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "AI capex 與存儲鏈條熱度支撐關注度，情緒過熱警示信號增多。",
+      "tags": ["看多", "高风险偏多", "GPT xhigh"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 9, "ticker": "MSTR", "priority": 312,
+      "stance": "watch_high_risk", "aiChange": "xhigh",
+      "summary": "代理材料圍繞優先股分紅節奏與治理提案展開；融資結構為關注點。",
+      "tags": ["中性", "高风险观察", "新闻 10", "披露 8"],
+      "updatedAt": "2026-05-29 05:50"
+    },
+    {
+      "rank": 10, "ticker": "RKLB", "priority": 305,
+      "stance": "bull_high_risk", "aiChange": "xhigh",
+      "summary": "最高 30 億 ATM/遠期售股安排為最直接的組合風險輸入。",
+      "tags": ["看多", "高风险偏多", "GPT xhigh", "新闻 10"],
+      "updatedAt": "2026-05-29 05:50"
+    }
+  ],
+  "feedItems": [
+    {
+      "id": "feed-0",
+      "kind": "news",
+      "ticker": "NVDA",
+      "title": "Reuters: NVIDIA 與 OpenAI 擴大基礎設施合作",
+      "body": "NVIDIA 與 OpenAI 將擴大基礎設施合作，新合約金額未公開，預期影響 2026Q2 起的訂單能見度...",
+      "badges": [
+        {"label": "新闻", "tone": "info"},
+        {"label": "Reuters", "tone": "neutral"}
+      ],
+      "publishedAt": "2026-05-29 04:38"
+    },
+    {
+      "id": "feed-1",
+      "kind": "ai",
+      "ticker": "SIVE",
+      "title": "GPT xhigh 更新 · SIVE",
+      "body": "EU Chips Act 2 草案曝光，photonics 條目納入第二輪補貼名單初稿；需核驗 EU 文件、公司公告、客戶合同、CHIPS 資金表述。",
+      "badges": [
+        {"label": "GPT xhigh", "tone": "ai"},
+        {"label": "看多", "tone": "bull"},
+        {"label": "政策", "tone": "info"}
+      ],
+      "publishedAt": "2026-05-29 05:24"
+    },
+    {
+      "id": "feed-2",
+      "kind": "filing",
+      "ticker": "MSTR",
+      "title": "SEC: MSTR 14A 代理材料修訂",
+      "body": "MSTR 提交 14A 修訂，新增優先股分紅相關治理提案，影響 2026 年股東會議程...",
+      "badges": [
+        {"label": "披露", "tone": "neutral"},
+        {"label": "SEC", "tone": "neutral"}
+      ],
+      "publishedAt": "2026-05-29 03:15"
+    },
+    {
+      "id": "feed-3",
+      "kind": "tweet",
+      "ticker": "AAOI",
+      "title": "作者推文 · AAOI",
+      "body": "11:38 以 400,000 粉絲節點回顧從 TSEM 到 AAOI 的想法傳播...",
+      "badges": [
+        {"label": "推文", "tone": "info"}
+      ],
+      "publishedAt": "2026-05-29 05:38"
+    }
+  ],
+  "distribution": {
+    "观察": 242,
+    "积极观察": 186,
+    "高风险观察": 122,
+    "谨慎": 86,
+    "高风险偏多": 70
+  },
+  "industries": null,
+  "raw": {
+    "htmlLength": 12453,
+    "checksum": "sha256:a3f5b8c2d1e9..."
+  }
+}
