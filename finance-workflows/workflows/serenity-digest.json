@@ -1,0 +1,24 @@
+{
+  "$schema_version": 1,
+  "name": "serenity-digest",
+  "description": "Daily distillation of analysissite.vercel.app — Tier 1/2/3 digest + KG memory of KOL views",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 40,
+  "sources": [
+    { "kind": "web", "name": "analysissite", "url": "https://analysissite.vercel.app/" }
+  ],
+  "tools": ["web-fetch", "knowledge-graph"],
+  "prompts": [
+    "prompts/shared/faithfulness.md",
+    "prompts/serenity-digest/framework.md",
+    "prompts/serenity-digest/voice.md",
+    "prompts/serenity-digest/main.md"
+  ],
+  "output": "reports/serenity-digest/{date}.html",
+  "post": { "pdf": false, "telegram": "TELEGRAM_TOPIC_SERENITY" },
+  "history": {
+    "format": "jsonl",
+    "summarize_with": "claude-haiku-4-5",
+    "fields": ["topTickers", "stances", "priorities", "newInTop10", "droppedFromTop10", "priorityMovers", "metrics", "writes", "kg_node_ids", "status"]
+  }
+}
