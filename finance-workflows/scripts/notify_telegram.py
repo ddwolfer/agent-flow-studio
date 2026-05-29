@@ -91,7 +91,15 @@ def notify(workflow_name: str, date: str, output_html: pathlib.Path,
         if topic_env:
             topic = (os.environ.get(topic_env) or "").strip()
         hist = _latest_history(pathlib.Path(history_path), date) if history_path else None
-        text = _build_message(workflow_name, date, hist)
+        # Prefer a workflow-authored _brief.md sibling to the HTML output. When
+        # present it IS the Telegram body, bypassing the history-derived summary.
+        # Used by serenity-digest (Tier 1/2/3 layout) and any future workflow
+        # that wants a custom Markdown shape.
+        brief_md = pathlib.Path(output_html).with_name("_brief.md")
+        if brief_md.exists():
+            text = brief_md.read_text("utf-8")
+        else:
+            text = _build_message(workflow_name, date, hist)
         base = {"chat_id": chat}
         if topic:
             base["message_thread_id"] = topic

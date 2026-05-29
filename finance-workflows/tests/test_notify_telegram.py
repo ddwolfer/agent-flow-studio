@@ -84,6 +84,41 @@ def test_no_topic_env_sends_without_thread_id(monkeypatch, tmp_path):
     assert "message_thread_id" not in _FakeClient.posts[0]["data"]
 
 
+def test_brief_md_wins_over_history(monkeypatch, tmp_path):
+    """If a _brief.md sits next to the output HTML, its content IS the
+    Telegram message body — history-based summary is bypassed."""
+    m = _load()
+    monkeypatch.setattr(m.httpx, "Client", _FakeClient)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "BOT")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-1001")
+    monkeypatch.setenv("TELEGRAM_TOPIC_S", "99")
+    html = tmp_path / "r.html"; html.write_text("<p>x</p>", "utf-8")
+    brief = tmp_path / "_brief.md"; brief.write_text(
+        "📊 *Tier 1 NVDA* — testing _brief.md path", "utf-8")
+    # history exists but should be ignored
+    hist = _write_history(tmp_path, "2026-05-29",
+                          {"overall_stance": "SHOULD NOT APPEAR"})
+    m.notify("serenity-digest", "2026-05-29", html, hist, "TELEGRAM_TOPIC_S")
+    assert len(_FakeClient.posts) == 1  # message only, no PDF
+    sent = _FakeClient.posts[0]["data"]["text"]
+    assert "Tier 1 NVDA" in sent
+    assert "SHOULD NOT APPEAR" not in sent
+
+
+def test_no_brief_md_falls_back_to_history(monkeypatch, tmp_path):
+    """Existing behaviour preserved for workflows without a _brief.md."""
+    m = _load()
+    monkeypatch.setattr(m.httpx, "Client", _FakeClient)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "BOT")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-1001")
+    html = tmp_path / "r.html"; html.write_text("<p>x</p>", "utf-8")
+    hist = _write_history(tmp_path, "2026-05-29",
+                          {"overall_stance": "Bullish baseline"})
+    m.notify("us-macro", "2026-05-29", html, hist, None)
+    assert len(_FakeClient.posts) == 1
+    assert "Bullish baseline" in _FakeClient.posts[0]["data"]["text"]
+
+
 def test_swallows_httpx_exceptions(monkeypatch, tmp_path):
     """Telegram failures must never raise — report is already written."""
     m = _load()
