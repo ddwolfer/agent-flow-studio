@@ -235,6 +235,12 @@ def main(argv=None):
             "--max-turns", str(cfg.max_turns),
             "--mcp-config", str(mcp_json_path),
             "--strict-mcp-config",
+            # --bare skips Claude Code hooks (session-start, auto-recall,
+            # search-enforcer, Stop=auto-capture). Workflows are headless
+            # batch jobs; hooks were never the cost we wanted to pay per run.
+            # KG access is via the MCP server above, called explicitly from
+            # the workflow's prompt (no hook needed).
+            "--bare",
             "--allowedTools", ",".join(allowed)]
     print(f"[run] {cfg.name} → {output_abs}", file=sys.stderr)
     with log_path.open("w", encoding="utf-8") as logf:
