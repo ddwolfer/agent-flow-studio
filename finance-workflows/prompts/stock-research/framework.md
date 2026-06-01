@@ -2,6 +2,19 @@
 
 對每一檔個股,**逐層完成**以下分析。**寧可漏掉某層也不要亂填** —— faithfulness.md 是上位規則。
 
+## 分層策略(token 預算控制)
+
+watchlist 內的個股**不是全部都要完整 7 層**。依照 watchlist 順序分兩級:
+
+- **Tier A — 前 3 檔(`watchlist[0:3]`,目前是 NVDA / TSM / AAPL)**:跑完整 **7 層**(以下章節全部執行),包含 SEC EDGAR 10-K 60K 字節讀取。
+- **Tier B — 其餘所有檔(目前是 MSFT / AVGO / AMD / GOOGL / META / AMZN / TSLA / SPY / QQQ)**:跑**精簡 4 層**(只做 §1 公司概覽 / §4 財務快照 / §6 風險 / §7 投資邏輯)。**跳過 §2、§3、§5**,**也不呼叫 `edgar_latest_annual` 與 `edgar_fetch_text`**(這是 token 最大來源)。
+
+設計理由:NVDA / TSM / AAPL 是最重的「需要看 10-K 細節」的標的;其他 9 檔(尤其 ETF)從 Yahoo 元數據 + 總經背景就能做出合理的「方向 + 信心 + 觀察重點」結論。整體大概省 ~40% token,品質損失集中在「不是核心的 9 檔」。
+
+對 Tier B 個股,§4 財務快照只列 6-7 個關鍵欄位(marketCap、currentPrice、trailingPE、forwardPE、profitMargins、revenueGrowth、debtToEquity),不必把 framework §4 整張表全部列出。§6 風險只寫 3 條(業務 + 總經連動,可省略法規/地緣那項若沒有明顯暴露)。§7 投資邏輯必寫,維持原規格。
+
+ETF(SPY、QQQ)依然走 framework 內的 ETF 例外處理 — 在 Tier B 規格下就是「Yahoo 元數據 + 系統性風險 + 大盤錨視角」。
+
 ## 1. 公司概覽
 - 主業務、營收結構(若 IR 頁可抓到)、規模、上市地點。
 - 來源:`web_extract_article(url=<source.url>)`(該股 IR 頁)+ `get_stock_info(ticker)` 的 longBusinessSummary 欄位。

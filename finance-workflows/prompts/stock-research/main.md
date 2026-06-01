@@ -17,17 +17,23 @@ ${SOURCES_JSON}
 - `mcp__fred__fred_get_series(series_id="CPIAUCSL")` — CPI 最新
 - 留住這 4 個數據,後面每一檔股票分析「總經連動」那層會用到。
 
-### 第二階段:逐檔深入(每檔依以下流程)
-對 watchlist 中**每一檔 ticker**做以下:
+### 第二階段:逐檔深入(每檔依以下流程,**按 Tier A / B 區分**)
+
+**先依 watchlist 順序判斷該檔屬於哪個 tier**:
+- 第 1-3 檔(NVDA / TSM / AAPL)→ **Tier A**:走完整 A-B-C-D 流程
+- 第 4 檔以後(MSFT / AVGO / AMD / GOOGL / META / AMZN / TSLA / SPY / QQQ)→ **Tier B**:只走 A-D 簡化版,**跳過 B 與 C**
+
+(分層原因見 framework.md「分層策略」段)
+
+#### Tier A 流程(前 3 檔)
 
 A. **Yahoo 抓快照**:`mcp__yahoo-finance__get_stock_info(ticker=<TICKER>)` — 拿到 longBusinessSummary、sector、industry、marketCap、currentPrice、trailingPE / forwardPE / pegRatio / priceToBook、profitMargins / operatingMargins / returnOnEquity、revenueGrowth / earningsGrowth、debtToEquity / freeCashflow、dividendYield、52 週區間。**不要呼叫 `get_historical_stock_prices` 拿全歷史**(資料量大、用不上)—— 只在你需要近期趨勢且 `get_stock_info` 沒給時才用。
 
-B. **公司年度報告 (SEC EDGAR)** —— 取代之前的 IR 頁抓取(IR 頁多為 JS-rendered SPA,headless 抓不到):
+B. **公司年度報告 (SEC EDGAR)**:
    - `mcp__edgar__edgar_latest_annual(ticker=<TICKER>)` → 找該公司最新 10-K(美企)/20-F(外國發行人,例如 TSM)/40-F。回傳 `primary_doc_url`。
    - `mcp__edgar__edgar_fetch_text(url=<primary_doc_url>, max_chars=60000, offset=0)` → 取前 60K 字的純文字(已 strip script/style)。文件通常 200K+ 字;**你只需要看「Item 1. Business」與「Item 1A. Risk Factors」這兩節**(它們通常在前 60K 內)。如果 `truncated=true` 且你還沒看到 Item 1A,用 `offset=<回傳的 end>` 再叫一次續讀。
    - 若 EDGAR 連 ticker 都解析不到(例如 ADR 結構特殊),才退回 `web_extract_article(<source.url>)` 抓 IR 頁;**該頁回空就標註不可用,不要編造**。
    - 用 EDGAR 取到的「Item 1. Business」內容做「公司概覽 / 產品 / 業務分析」段落,逐字引述他們的描述;「Item 1A. Risk Factors」對應你的「風險」段落(挑 3-5 條最具體、非樣板的)。
-   - **ETF 例外**(例如 SPY、QQQ):ETF 沒有 10-K,**不要呼叫 `edgar_latest_annual`**(會浪費 turn)。改成:Yahoo `get_stock_info` 拿到的 ETF 元數據(longBusinessSummary、totalAssets、yield、expenseRatio、navPrice 等)當「概覽 + 產品」段;「業務分析」改寫成「持股結構/前幾大成份股(若 Yahoo 有給)」或標「ETF 不適用 10-K 級分析」;「風險」改寫成「該指數/類別的系統性風險 + 近期資金流向」。其餘流程(估值/總經連動/觀察重點)照走但偏「大盤錨」視角而非個股估值。
 
 C. **近期新聞**(可選):若你判斷該股近期(過去 7 天)有具體事件(財報、產品發表、地緣風險),可用 `mcp__web-fetch__web_fetch` 或 `web_extract_article` 抓 Yahoo Finance 該 ticker 的 news 頁面(`https://finance.yahoo.com/quote/<TICKER>/news`)。不確定就跳過,不要編造新聞。
 
@@ -39,6 +45,20 @@ D. **依 framework.md 的 7 層**寫出該股的研究段落:
    5. 估值簡評(**相對估值,不做 DCF**;誠實邊界)
    6. 風險(業務 / 法規 / 總經連動 — 總經那層接第一階段抓的 4 個 FRED 數值)
    7. 投資邏輯 + 觀察重點(多 / 中性 / 空 + 信心 0-10 + 3-5 條 watch points)
+
+#### Tier B 流程(第 4 檔起,精簡版)
+
+A. **Yahoo 抓快照**(同 Tier A 的 A 步)。
+
+D-mini. **依 framework.md「分層策略」段的 Tier B 規格**寫出**精簡 4 層**(跳過 §2 §3 §5):
+   1. **公司概覽**(1-2 句,從 Yahoo `longBusinessSummary` 抽,不必再抓 IR 或 EDGAR)
+   4. **財務快照(精簡)**:只列 6-7 個關鍵欄位 — marketCap、currentPrice、trailingPE、forwardPE、profitMargins、revenueGrowth、debtToEquity(個股);ETF 則改列 totalAssets、yield、expenseRatio、navPrice。
+   6. **風險(精簡)**:3 條 bullet,業務 + 總經連動(法規/地緣若無明顯暴露可省)。總經那項接第一階段的 FRED 數值。
+   7. **投資邏輯 + 觀察重點**:**不省略**,維持「方向(多/中/空)+ 信心 0-10 + 3-5 條 watch points」原規格。
+
+**Tier B 嚴格禁止呼叫** `mcp__edgar__edgar_latest_annual`、`mcp__edgar__edgar_fetch_text`、`mcp__web-fetch__web_fetch`、`mcp__web-fetch__web_extract_article`(這些是 token 大頭)。只用 Yahoo + FRED。
+
+ETF(SPY、QQQ)走 Tier B 流程時:概覽段用 Yahoo 提供的 ETF 元數據;風險段寫「該指數/類別的系統性風險」;投資邏輯段以「大盤錨」視角而非個股估值。
 
 ### 第三階段:整體市場層(所有個股做完後,寫在報告最後)
 - 整體市場 view(偏多 / 中性 / 偏空 + 信心),用 framework.md 最後那段的方法。
