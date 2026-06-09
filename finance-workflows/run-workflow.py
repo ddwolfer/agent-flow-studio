@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """finance-workflows orchestrator. Usage: python3 run-workflow.py <name>"""
 import argparse, datetime as _dt, json, os, pathlib, signal, subprocess, sys, time
+import urllib.request, urllib.parse
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -181,6 +182,39 @@ def _run_claude_with_retry(argv_, log_path, root, *, attempts=3, backoff=30,
     return rc
 
 
+def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path):
+    """Best-effort: post a failure alert to the same Telegram topic that would
+    have received the success message. Silent on any error — alerting must
+    never make the runner crash worse than it already has."""
+    try:
+        bot = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        chat = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+        if not (bot and chat and topic_env):
+            return
+        topic = (os.environ.get(topic_env) or "").strip()
+        if not topic:
+            return
+        tail = ""
+        try:
+            tail = log_path.read_text("utf-8").splitlines()[-12:]
+            tail = "\n".join(tail)[-1500:]
+        except Exception:
+            pass
+        text = (f"⚠️ *{workflow_name}* `{date}` 跑失敗 (rc={rc})\n"
+                f"Log: `{log_path.name}`\n"
+                f"```\n{tail}\n```")
+        data = urllib.parse.urlencode({
+            "chat_id": chat, "message_thread_id": topic,
+            "text": text, "parse_mode": "Markdown",
+            "disable_web_page_preview": "true",
+        }).encode()
+        urllib.request.urlopen(
+            f"https://api.telegram.org/bot{bot}/sendMessage",
+            data=data, timeout=15)
+    except Exception as e:
+        print(f"[telegram-alert] silent fail: {e}", file=sys.stderr)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("name", help="workflow name (workflows/<name>.json)")
@@ -252,9 +286,11 @@ def main(argv=None):
     rc = _run_claude_with_retry(argv_, log_path, root)
     if rc != 0:
         print(f"[claude] exited {rc} — see {log_path}", file=sys.stderr)
+        _telegram_alert_failure(cfg.name, date, cfg.post.telegram, rc, log_path)
         return rc
     if not output_abs.exists():
         print(f"[claude] exit 0 but no HTML at {output_abs} — see {log_path}", file=sys.stderr)
+        _telegram_alert_failure(cfg.name, date, cfg.post.telegram, 4, log_path)
         return 4
 
     # Optional PDF (best-effort)
