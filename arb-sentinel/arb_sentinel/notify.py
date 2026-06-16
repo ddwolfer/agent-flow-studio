@@ -18,6 +18,8 @@ def send_message(text: str, cfg, pause: float = 1.1) -> bool:
         with httpx.Client(timeout=30.0) as c:
             r = c.post(f"{API}/bot{cfg.telegram_bot_token}/sendMessage", data=data)
         if r.status_code != 200:
+            # M6 hardening will honour 429 retry_after / backoff; for M1's low
+            # volume we just log and treat any non-200 as a best-effort failure.
             print(f"[telegram] {r.status_code}: {r.text[:200]}", file=sys.stderr)
             return False
         time.sleep(pause)          # respect 1 msg/sec/chat
@@ -31,8 +33,9 @@ def format_opportunity(o: Opportunity, net, est, flag, tier, cfg) -> str:
     e = lambda s: html.escape(str(s))
     emoji = _TIER_EMOJI.get(tier, "⚫")
     promo = " (促銷)" if o.apr_is_promotional else ""
+    apr_str = f"{o.apr * 100:.1f}%" if o.apr is not None else "—"   # depeg/unparsed promos carry apr=None
     lines = [f"{emoji} <b>Earn 機會 | {e(o.exchange.upper())}</b>", "",
-             f"{e(o.asset)} 活期 {o.apr*100:.1f}%{promo}"]
+             f"{e(o.asset)} 活期 {apr_str}{promo}"]
     if net is not None:
         mode = "自有資金" if cfg.own_funds_mode else f"借款 {((o.borrow_apr_same_asset or 0)*100):.1f}%"
         lines.append(f"淨利差 ≈ {net*100:.1f}% 年化 ({mode})")

@@ -50,3 +50,10 @@ def test_estimate_yield(cfg):
     # 30000 * 0.06 * 14/365 = 69.04 gross; minus 2x 15 slippage = 39.04 net
     assert est["est_gross"] == 69.04
     assert est["est_net"] == 39.04
+
+def test_classify_directional_risk_plus_too_late_is_log_only(cfg):
+    # drop-out (TOO_LATE) takes precedence over the directional-risk cap
+    assert classify(0.06, TOO_LATE, _opp(directional_risk=True), cfg) == LOG_ONLY
+
+def test_classify_negative_net_is_log_only(cfg):
+    assert classify(-0.01, NO_DEADLINE, _opp(), cfg) == LOG_ONLY

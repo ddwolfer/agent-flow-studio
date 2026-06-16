@@ -13,6 +13,8 @@ class State:
                 self.data = json.loads(self.path.read_text("utf-8"))
             except Exception:
                 pass
+        if not isinstance(self.data, dict):          # corrupt/wrong-shape JSON → reset
+            self.data = {"seen_opportunities": {}, "active_positions": []}
         self.data.setdefault("seen_opportunities", {})
         self.data.setdefault("active_positions", [])
 
@@ -20,7 +22,7 @@ class State:
         prev = self.data["seen_opportunities"].get(stable_id(o))
         if prev is None:
             return tier in ("ACT_NOW", "GOOD")          # first sighting: alert if actionable
-        if _TIER_RANK[tier] > _TIER_RANK.get(prev.get("tier", "LOG_ONLY"), 0):
+        if _TIER_RANK.get(tier, 0) > _TIER_RANK.get(prev.get("tier", "LOG_ONLY"), 0):
             return True                                  # tier upgraded
         if o.apr is not None and prev.get("last_apr") is not None:
             if abs(o.apr - prev["last_apr"]) >= cfg.renotify_delta:

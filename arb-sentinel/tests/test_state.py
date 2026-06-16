@@ -27,3 +27,9 @@ def test_state_persists_across_instances(tmp_path, cfg):
     p = tmp_path / "state.json"
     State(p).record(_opp(0.06), ACT_NOW)
     assert State(p).should_notify(_opp(0.06), ACT_NOW, cfg) is False
+
+def test_corrupt_non_dict_state_recovers(tmp_path, cfg):
+    p = tmp_path / "state.json"
+    p.write_text("[1, 2, 3]", "utf-8")          # valid JSON but wrong shape
+    st = State(p)                                # must not raise
+    assert st.should_notify(_opp(0.06), ACT_NOW, cfg) is True
