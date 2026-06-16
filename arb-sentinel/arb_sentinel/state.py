@@ -17,6 +17,7 @@ class State:
             self.data = {"seen_opportunities": {}, "active_positions": []}
         self.data.setdefault("seen_opportunities", {})
         self.data.setdefault("active_positions", [])
+        self.data.setdefault("seen_announcements", {})
 
     def should_notify(self, o: Opportunity, tier: str, cfg) -> bool:
         prev = self.data["seen_opportunities"].get(stable_id(o))
@@ -32,6 +33,13 @@ class State:
     def record(self, o: Opportunity, tier: str) -> None:
         self.data["seen_opportunities"][stable_id(o)] = {
             "last_apr": o.apr, "tier": tier, "last_collected": o.collected_at}
+        self._save()
+
+    def is_new_announcement(self, ann_id) -> bool:
+        return ann_id not in self.data.setdefault("seen_announcements", {})
+
+    def mark_announcement(self, ann_id, meta=None) -> None:
+        self.data.setdefault("seen_announcements", {})[ann_id] = meta or {}
         self._save()
 
     def _save(self) -> None:

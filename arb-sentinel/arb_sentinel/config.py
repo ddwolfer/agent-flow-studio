@@ -12,6 +12,7 @@ class Settings:
     telegram_bot_token: str; telegram_chat_id: str; telegram_topic_arb: str
     binance_api_key: str = ""; binance_api_secret: str = ""
     bitget_api_key: str = ""; bitget_api_secret: str = ""; bitget_api_passphrase: str = ""
+    groq_api_key: str = ""
 
 
 def _load_dotenv(path: pathlib.Path) -> None:
@@ -47,4 +48,5 @@ def load_settings(config_path: pathlib.Path | None = None) -> Settings:
         bitget_api_key=os.environ.get("BITGET_API_KEY", ""),
         bitget_api_secret=os.environ.get("BITGET_API_SECRET", ""),
         bitget_api_passphrase=os.environ.get("BITGET_API_PASSPHRASE", ""),
+        groq_api_key=os.environ.get("GROQ_API_KEY", ""),
     )

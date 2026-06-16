@@ -10,6 +10,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     cfg = load_settings()
     dispatch = {"rates": run_mod.run_rates, "digest": run_mod.run_digest,
+                "announcements": run_mod.run_announcements,
                 "test": lambda c: run_mod.run_test(c)}
     fn = dispatch.get(args.task)
     if fn is None:

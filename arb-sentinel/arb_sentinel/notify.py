@@ -43,6 +43,10 @@ def format_opportunity(o: Opportunity, net, est, flag, tier, cfg) -> str:
         lines.append(f"參考 {cfg.ref_capital:,.0f} × {est['holding_days']} 天 ≈ +${est['est_net']:,.0f}")
     if o.end_date:
         lines.append(f"⏳ 活動至 {o.end_date.isoformat()}({flag})")
+    if o.entry_asset_required:
+        lines.append(f"💱 入場幣種: {e(o.entry_asset_required)}")
+    if o.subsidy_note:
+        lines.append(f"🎁 {e(o.subsidy_note)}")
     if o.source_url:
         lines.append(f"🔗 {e(o.source_url)}")
     lines.append(f"⚠️ 來源: {e(o.apr_source)}（顯示值未必可持續,進場前於 App 確認）")
