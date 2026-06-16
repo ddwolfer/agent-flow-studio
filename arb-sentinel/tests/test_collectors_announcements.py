@@ -20,3 +20,17 @@ def test_fetch_bitget_never_raises(monkeypatch):
     monkeypatch.setattr(httpx.Client, "get", boom)
     anns, errors = announcements.fetch_bitget()
     assert anns == [] and len(errors) >= 1
+
+
+def test_fetch_okx_normalises_and_tags_exchange(monkeypatch):
+    payload = {"code": "0", "data": [{"details": [
+        {"annType": "latest-events", "title": "OKX Earn event", "url": "https://okx/help/x",
+         "pTime": "1781588100000"}]}]}
+    def fake_get(self, url, **kw):
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    anns, errors = announcements.fetch_okx()
+    assert errors == []
+    a = anns[0]
+    assert a["_exchange"] == "okx" and a["annId"] == "https://okx/help/x"
+    assert a["annTitle"] == "OKX Earn event" and a["annUrl"] == "https://okx/help/x"

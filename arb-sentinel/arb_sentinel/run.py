@@ -1,4 +1,4 @@
-import datetime, sys
+import datetime, sys, time
 from .collectors import okx, binance, bitget, announcements
 from . import engine, notify, llm, exits
 from .models import Opportunity
@@ -90,29 +90,39 @@ def _parse_date(s):
         return None
 
 
-def run_announcements(cfg, state_path="state/state.json", today=None) -> int:
+def run_announcements(cfg, state_path="state/state.json", today=None, max_llm=20, pause=2.5) -> int:
     """Pull exchange announcements, LLM-extract promo structure for NEW ones, grade,
     and alert actionable promotions. The LLM (Groq) is called only on un-seen
     announcements, so cost is bounded. Returns #notifications sent. Never raises out."""
     today = today or _today()
     st = State(state_path)
-    anns, errors = announcements.fetch_bitget()
+    anns, errors = announcements.fetch_all(cfg)
     for err in errors:
         print(f"[ann] {err}", file=sys.stderr)
     now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     sent = 0
+    processed = 0                       # bounded LLM calls per run (Groq ~30 req/min)
     for a in anns:
+        exch = a.get("_exchange", "bitget")
         ann_id = a.get("annId")
-        if not ann_id or not st.is_new_announcement(ann_id):
+        seen_key = f"{exch}:{ann_id}"
+        if not ann_id or not st.is_new_announcement(seen_key):
             continue
+        if processed >= max_llm:
+            break                       # leave the rest for the next run (NOT marked seen)
         info = llm.extract_promo(a.get("annTitle", ""), a.get("annDesc", ""),
                                  api_key=getattr(cfg, "groq_api_key", "") or None)
-        st.mark_announcement(ann_id, {"title": a.get("annTitle"),
-                                      "is_promo": bool(info and info.get("is_promotion"))})
-        if not info or not info.get("is_promotion"):
+        processed += 1
+        if pause:
+            time.sleep(pause)           # throttle under Groq's rate limit
+        if info is None:
+            continue                    # LLM failed (e.g. 429) -> DON'T mark seen; retry next run
+        st.mark_announcement(seen_key, {"exchange": exch, "title": a.get("annTitle"),
+                                        "is_promo": bool(info.get("is_promotion"))})
+        if not info.get("is_promotion"):
             continue
         o = Opportunity(
-            exchange="bitget", category="promotion",
+            exchange=exch, category="promotion",
             asset=(info.get("entry_asset") or "?"),
             apr=info.get("apr"), apr_source="announcement", apr_is_promotional=True,
             min_hold_days=int(info.get("min_hold_days") or 0),
@@ -122,7 +132,7 @@ def run_announcements(cfg, state_path="state/state.json", today=None) -> int:
             subsidy_note=info.get("subsidy_note"),
             directional_risk=bool(info.get("directional_risk")),
             source_url=a.get("annUrl"), raw_snapshot=a, collected_at=now_iso,
-            dedup_key=f"bitget-promotion-{ann_id}")
+            dedup_key=f"{exch}-promotion-{ann_id}")
         net = engine.net_spread(o, 0.0 if cfg.own_funds_mode else (o.borrow_apr_same_asset or 0.0))
         flag = engine.time_flag(o, today, cfg.default_horizon_days)
         tier = engine.classify(net, flag, o, cfg)
