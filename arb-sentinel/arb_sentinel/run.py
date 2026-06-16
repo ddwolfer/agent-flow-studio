@@ -69,9 +69,11 @@ def run_digest(cfg, state_path="state/state.json", today=None) -> int:
     opps, errors = collect_all_rates(cfg)
     for err in errors:
         print(f"[collect] {err}", file=sys.stderr)
+    borrow_map = {} if cfg.own_funds_mode else borrow_rates(cfg)
     graded = []
     for o in opps:
-        net = engine.net_spread(o, 0.0 if cfg.own_funds_mode else (o.borrow_apr_same_asset or 0.0))
+        borrow = 0.0 if cfg.own_funds_mode else borrow_map.get(o.asset, 0.0)
+        net = engine.net_spread(o, borrow)
         flag = engine.time_flag(o, today, cfg.default_horizon_days)
         graded.append((o, net, engine.classify(net, flag, o, cfg)))
     return 1 if (graded and notify.send_message(notify.format_digest(graded, cfg), cfg)) else 0
@@ -119,7 +121,8 @@ def run_announcements(cfg, state_path="state/state.json", today=None) -> int:
             entry_asset_required=info.get("entry_asset"),
             subsidy_note=info.get("subsidy_note"),
             directional_risk=bool(info.get("directional_risk")),
-            source_url=a.get("annUrl"), raw_snapshot=a, collected_at=now_iso)
+            source_url=a.get("annUrl"), raw_snapshot=a, collected_at=now_iso,
+            dedup_key=f"bitget-promotion-{ann_id}")
         net = engine.net_spread(o, 0.0 if cfg.own_funds_mode else (o.borrow_apr_same_asset or 0.0))
         flag = engine.time_flag(o, today, cfg.default_horizon_days)
         tier = engine.classify(net, flag, o, cfg)

@@ -11,3 +11,9 @@ def test_stable_id_with_deadline_keys_on_end_date():
                     apr=0.12, apr_source="announcement",
                     end_date=datetime.date(2026, 6, 30))
     assert stable_id(o) == "bitget-promotion-USDGO-2026-06-30"
+
+def test_stable_id_uses_dedup_key_override():
+    # two entry-asset-less promos must NOT collide on "bitget-promotion-?"
+    o = Opportunity(exchange="bitget", category="promotion", asset="?",
+                    apr=0.1, apr_source="announcement", dedup_key="bitget-promotion-ANN42")
+    assert stable_id(o) == "bitget-promotion-ANN42"

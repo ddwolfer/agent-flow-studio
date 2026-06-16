@@ -57,3 +57,9 @@ def test_classify_directional_risk_plus_too_late_is_log_only(cfg):
 
 def test_classify_negative_net_is_log_only(cfg):
     assert classify(-0.01, NO_DEADLINE, _opp(), cfg) == LOG_ONLY
+
+def test_estimate_yield_chinese_exit_subsidy_waives_exit_slip(cfg):
+    o = _opp(apr=0.06, subsidy_note="補貼覆蓋兌回手續費")   # 兌回 = redeem/exit
+    est = estimate_yield(o, 0.06, cfg)
+    # exit slippage waived -> only entry slippage (15) subtracted: 69.04 - 15 = 54.04
+    assert est["est_net"] == 54.04

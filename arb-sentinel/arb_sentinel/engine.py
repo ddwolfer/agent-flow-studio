@@ -28,8 +28,11 @@ def estimate_yield(o: Opportunity, net: float | None, cfg) -> dict:
     holding_days = max(o.min_hold_days, cfg.default_horizon_days)
     est_gross = cfg.ref_capital * net * holding_days / 365
     entry_slip = cfg.ref_capital * cfg.entry_slippage_assumption
-    # subsidy covering exit -> no exit slippage; else symmetric to entry
-    exit_slip = 0.0 if (o.subsidy_note and "exit" in o.subsidy_note.lower()) else entry_slip
+    # subsidy covering exit -> no exit slippage; else symmetric to entry.
+    # Match EN + ZH exit/redeem terms (the LLM emits Chinese subsidy notes).
+    note = (o.subsidy_note or "").lower()
+    covers_exit = any(t in note for t in ("exit", "redeem", "出場", "出场", "兌回", "兑回", "贖回", "赎回"))
+    exit_slip = 0.0 if covers_exit else entry_slip
     return {
         "holding_days": holding_days,
         "est_gross": round(est_gross, 2),

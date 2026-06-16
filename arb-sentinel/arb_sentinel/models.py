@@ -28,8 +28,11 @@ class Opportunity:
     source_url: str | None = None
     raw_snapshot: dict = field(default_factory=dict)
     collected_at: str = ""              # ISO8601 UTC
+    dedup_key: str | None = None        # explicit stable_id override (e.g. announcement id)
 
 
 def stable_id(o: "Opportunity") -> str:
+    if o.dedup_key:
+        return o.dedup_key
     base = f"{o.exchange}-{o.category}-{o.asset}"
     return f"{base}-{o.end_date.isoformat()}" if o.end_date else base
