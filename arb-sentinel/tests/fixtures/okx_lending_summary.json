@@ -1,0 +1,5 @@
+{"code":"0","msg":"","data":[
+  {"ccy":"USDT","estRate":"0.025","avgRate":"0.025","preRate":"0.025","avgAmt":"1","avgAmtUsd":"1"},
+  {"ccy":"USDC","estRate":"0.025","avgRate":"0.024","preRate":"0.025","avgAmt":"1","avgAmtUsd":"1"},
+  {"ccy":"BTC","estRate":"0.005","avgRate":"0.005","preRate":"0.005","avgAmt":"1","avgAmtUsd":"1"},
+  {"ccy":"ETH","estRate":"0.015","avgRate":"0.015","preRate":"0.015","avgAmt":"1","avgAmtUsd":"1"}]}
