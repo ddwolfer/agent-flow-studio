@@ -14,5 +14,5 @@ schedule_hours:
   announcements: 1
   depeg_minutes: 30
 assets: [BTC, ETH, USDT, USDC]
-exchanges: [okx]            # binance, bitget added at M4
+exchanges: [okx, binance, bitget]   # all three live (M4 signed collectors)
 own_funds_mode: true        # true -> borrow_apr=0, net_spread=apr (M1 default)

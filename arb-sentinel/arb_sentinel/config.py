@@ -10,6 +10,8 @@ class Settings:
     rate_drop_ratio: float; depeg_bps: float; exit_lead_days: int
     schedule_hours: dict; assets: list; exchanges: list; own_funds_mode: bool
     telegram_bot_token: str; telegram_chat_id: str; telegram_topic_arb: str
+    binance_api_key: str = ""; binance_api_secret: str = ""
+    bitget_api_key: str = ""; bitget_api_secret: str = ""; bitget_api_passphrase: str = ""
 
 
 def _load_dotenv(path: pathlib.Path) -> None:
@@ -40,4 +42,9 @@ def load_settings(config_path: pathlib.Path | None = None) -> Settings:
         telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID", ""),
         telegram_topic_arb=os.environ.get("TELEGRAM_TOPIC_ARB", ""),
+        binance_api_key=os.environ.get("BINANCE_API_KEY", ""),
+        binance_api_secret=os.environ.get("BINANCE_API_SECRET", ""),
+        bitget_api_key=os.environ.get("BITGET_API_KEY", ""),
+        bitget_api_secret=os.environ.get("BITGET_API_SECRET", ""),
+        bitget_api_passphrase=os.environ.get("BITGET_API_PASSPHRASE", ""),
     )

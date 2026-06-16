@@ -50,9 +50,16 @@ def format_opportunity(o: Opportunity, net, est, flag, tier, cfg) -> str:
 
 
 def format_digest(graded: list, cfg) -> str:
-    """graded = [(Opportunity, net, tier)]. Compact baseline summary."""
-    lines = [f"🟡 <b>套利哨兵 | OKX 利率基線</b> ({len(graded)} 項)"]
+    """graded = [(Opportunity, net, tier)]. Compact baseline summary, grouped by exchange."""
+    lines = [f"🟡 <b>套利哨兵 | 利率基線</b> ({len(graded)} 項)"]
+    by_ex: dict = {}
     for o, net, tier in graded:
-        apr = f"{o.apr*100:.2f}%" if o.apr is not None else "—"
-        lines.append(f"{_TIER_EMOJI.get(tier,'⚫')} {html.escape(o.asset)} {apr}")
+        by_ex.setdefault(o.exchange, []).append((o, net, tier))
+    for ex in sorted(by_ex):
+        lines.append("")
+        lines.append(f"<b>{html.escape(ex.upper())}</b>")
+        for o, net, tier in sorted(by_ex[ex], key=lambda t: -(t[0].apr or 0)):
+            apr = f"{o.apr*100:.2f}%" if o.apr is not None else "—"
+            promo = " (促銷)" if o.apr_is_promotional else ""
+            lines.append(f"{_TIER_EMOJI.get(tier,'⚫')} {html.escape(o.asset)} {apr}{promo}")
     return "\n".join(lines)

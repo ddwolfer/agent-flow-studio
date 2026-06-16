@@ -1,18 +1,32 @@
 import datetime, sys
-from .collectors import okx
+from .collectors import okx, binance, bitget
 from . import engine, notify
 from .state import State
+
+_COLLECTORS = {"okx": okx, "binance": binance, "bitget": bitget}
 
 
 def _today():
     return datetime.date.today()
 
 
+def collect_all_rates(cfg):
+    """Collect flexible-earn rates from every exchange in cfg.exchanges. Never raises."""
+    opps, errors = [], []
+    for ex in cfg.exchanges:
+        mod = _COLLECTORS.get(ex)
+        if mod is None:
+            errors.append(f"unknown exchange '{ex}'"); continue
+        o, e = mod.collect_rates(cfg)
+        opps.extend(o); errors.extend(e)
+    return opps, errors
+
+
 def run_rates(cfg, state_path="state/state.json", today=None) -> int:
     """Collect OKX rates -> grade -> dedup -> alert actionable. Returns #notifications sent."""
     today = today or _today()
     st = State(state_path)
-    opps, errors = okx.collect_rates(cfg)
+    opps, errors = collect_all_rates(cfg)
     for err in errors:
         print(f"[collect] {err}", file=sys.stderr)
     sent = 0
@@ -32,7 +46,7 @@ def run_rates(cfg, state_path="state/state.json", today=None) -> int:
 def run_digest(cfg, state_path="state/state.json", today=None) -> int:
     """Post a compact baseline rate digest (proves the pipeline; not deduped)."""
     today = today or _today()
-    opps, errors = okx.collect_rates(cfg)
+    opps, errors = collect_all_rates(cfg)
     for err in errors:
         print(f"[collect] {err}", file=sys.stderr)
     graded = []
