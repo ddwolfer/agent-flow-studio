@@ -207,15 +207,19 @@ def estimate_yield(o: Opportunity, net: float | None, cfg) -> dict:
     }
 
 def classify(net: float | None, flag: str, o: Opportunity, cfg) -> str:
-    """Grade (spec §5.4). Order matters: TOO_LATE and missing/low net drop out first."""
+    """Grade (spec §5.4). Order matters: drop-outs first, then risk caps, then
+    positive grades. directional_risk (dual-invest) and TIGHT timing cap at WATCH
+    — they must never auto-act, even with a high net."""
     time_ok = flag in (OK_TIME, NO_DEADLINE)
     if net is None or flag == TOO_LATE:
         return LOG_ONLY
-    if net >= cfg.threshold_high and time_ok and not o.directional_risk:
+    if o.directional_risk or flag == TIGHT:
+        return WATCH
+    if net >= cfg.threshold_high and time_ok:
         return ACT_NOW
     if net >= cfg.threshold_mid and time_ok:
         return GOOD
-    if o.directional_risk or flag == TIGHT or net >= cfg.threshold_mid * 0.5:
+    if net >= cfg.threshold_mid * 0.5:
         return WATCH
     return LOG_ONLY
 ```
