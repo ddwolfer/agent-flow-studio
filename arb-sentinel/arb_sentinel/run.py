@@ -167,7 +167,7 @@ def run_depeg(cfg, state_path="state/state.json", pairs=("USDC-USDT",)) -> int:
         prev = seen.get(pair)
         if prev is not None and dev_bps < (abs(prev - 1.0) * 10000) + cfg.depeg_bps / 2:
             continue                      # not materially worse than last alert → skip
-        if notify.send_message(f"🚨 脫鉤偵測 | {pair} 現價 {price} 偏離 1.0（{dev_bps:.0f} bps）", cfg):
+        if notify.send_message(f"🚨 脫鉤偵測 | OKX {pair} 現價 {price} 偏離 1.0（{dev_bps:.0f} bps）", cfg):
             sent += 1
         seen[pair] = price
     st._save()
