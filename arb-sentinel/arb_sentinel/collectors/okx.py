@@ -5,6 +5,7 @@ from . import base
 BASE = "https://www.okx.com"
 SUMMARY = "/api/v5/finance/savings/lending-rate-summary"
 TICKER = "/api/v5/market/ticker"
+LOAN_QUOTA = "/api/v5/public/interest-rate-loan-quota"
 
 
 def _now_iso() -> str:
@@ -54,3 +55,21 @@ def collect_depeg(cfg, pairs=("USDC-USDT",)) -> tuple[list[Opportunity], list[st
             apr=None, apr_source="api",
             subsidy_note=f"last={last}", raw_snapshot=rows[0], collected_at=_now_iso()))
     return opps, errors
+
+
+def collect_borrow(cfg) -> tuple[dict, list[str]]:
+    """OKX public margin borrow rates per asset, annualised (daily rate × 365).
+    Keyless. Returns ({asset: borrow_apr}, errors). Never raises."""
+    data, err = base.get_json(BASE + LOAN_QUOTA)
+    if err:
+        return {}, [err]
+    out = {}
+    for row in (data.get("data") or []):
+        for b in (row.get("basic") or []):
+            ccy = b.get("ccy")
+            if ccy in cfg.assets:
+                try:
+                    out[ccy] = float(b["rate"]) * 365.0
+                except (KeyError, ValueError, TypeError):
+                    pass
+    return out, []

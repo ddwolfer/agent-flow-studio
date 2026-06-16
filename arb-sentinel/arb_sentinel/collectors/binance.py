@@ -4,6 +4,7 @@ from ..models import Opportunity
 
 BASE = "https://api.binance.com"
 FLEX = "/sapi/v1/simple-earn/flexible/list"
+NEXT_RATE = "/sapi/v1/margin/next-hourly-interest-rate"
 
 
 def _now_iso() -> str:
@@ -59,3 +60,24 @@ def collect_rates(cfg) -> tuple[list[Opportunity], list[str]]:
             source_url="https://www.binance.com/en/earn",
             raw_snapshot=row, collected_at=_now_iso()))
     return opps, errors
+
+
+def collect_borrow(cfg) -> tuple[dict, list[str]]:
+    """Binance cross-margin borrow rates per asset, annualised (hourly × 24 × 365).
+    SIGNED (read-only key). Returns ({asset: borrow_apr}, errors). Never raises."""
+    key = getattr(cfg, "binance_api_key", "")
+    secret = getattr(cfg, "binance_api_secret", "")
+    if not key or not secret:
+        return {}, ["binance borrow: no api key/secret (skipped)"]
+    data, err = _signed_get(NEXT_RATE, {"assets": ",".join(cfg.assets), "isIsolated": "FALSE"},
+                            key, secret)
+    if err:
+        return {}, [err]
+    out = {}
+    for row in (data or []):
+        asset = row.get("asset")
+        try:
+            out[asset] = float(row["nextHourlyInterestRate"]) * 24 * 365
+        except (KeyError, ValueError, TypeError):
+            pass
+    return out, []

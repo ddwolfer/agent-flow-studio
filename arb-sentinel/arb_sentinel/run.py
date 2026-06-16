@@ -23,6 +23,20 @@ def collect_all_rates(cfg):
     return opps, errors
 
 
+def borrow_rates(cfg):
+    """Cheapest borrow APR per asset across exchanges (OKX public + Binance signed).
+    Returns {asset: min_apr}. Bitget borrow is a TODO. Never raises."""
+    best = {}
+    for mod in (okx, binance):
+        rates, errs = mod.collect_borrow(cfg)
+        for err in errs:
+            print(f"[borrow] {err}", file=sys.stderr)
+        for asset, r in rates.items():
+            if asset not in best or r < best[asset]:
+                best[asset] = r
+    return best
+
+
 def run_rates(cfg, state_path="state/state.json", today=None) -> int:
     """Collect OKX rates -> grade -> dedup -> alert actionable. Returns #notifications sent."""
     today = today or _today()
@@ -30,9 +44,14 @@ def run_rates(cfg, state_path="state/state.json", today=None) -> int:
     opps, errors = collect_all_rates(cfg)
     for err in errors:
         print(f"[collect] {err}", file=sys.stderr)
+    borrow_map = {} if cfg.own_funds_mode else borrow_rates(cfg)
     sent = 0
     for o in opps:
-        borrow = 0.0 if cfg.own_funds_mode else (o.borrow_apr_same_asset or 0.0)
+        if cfg.own_funds_mode:
+            borrow = 0.0
+        else:
+            borrow = borrow_map.get(o.asset, 0.0)
+            o.borrow_apr_same_asset = borrow
         net = engine.net_spread(o, borrow)
         flag = engine.time_flag(o, today, cfg.default_horizon_days)
         tier = engine.classify(net, flag, o, cfg)

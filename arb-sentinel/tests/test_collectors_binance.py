@@ -39,3 +39,19 @@ def test_never_raises_on_http_error(monkeypatch):
     monkeypatch.setattr(httpx.Client, "get", boom)
     opps, errors = binance.collect_rates(_cfg())
     assert opps == [] and len(errors) >= 1
+
+
+def test_collect_borrow_annualises_hourly_rate(monkeypatch):
+    rows = [{"asset": "USDT", "nextHourlyInterestRate": "0.00000385"},
+            {"asset": "BTC", "nextHourlyInterestRate": "0.00000045"}]
+    def fake_get(self, url, **kw):
+        return httpx.Response(200, json=rows, request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    rates, errors = binance.collect_borrow(_cfg())
+    assert errors == []
+    assert abs(rates["USDT"] - 0.00000385 * 24 * 365) < 1e-12   # hourly -> annual
+
+
+def test_collect_borrow_missing_keys_skips():
+    rates, errors = binance.collect_borrow(_cfg(binance_api_key="", binance_api_secret=""))
+    assert rates == {} and len(errors) == 1

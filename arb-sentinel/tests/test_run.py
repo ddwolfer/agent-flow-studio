@@ -13,3 +13,12 @@ def test_run_rates_grades_and_notifies(monkeypatch, cfg, tmp_path):
     # second identical run is deduped -> no send
     n2 = run_mod.run_rates(cfg, state_path=tmp_path / "s.json", today=datetime.date(2026, 6, 16))
     assert n2 == 0 and len(sent) == 1
+
+
+def test_borrow_rates_takes_cheapest_across_exchanges(monkeypatch, cfg):
+    monkeypatch.setattr(run_mod.okx, "collect_borrow", lambda c: ({"USDT": 0.025, "BTC": 0.005}, []))
+    monkeypatch.setattr(run_mod.binance, "collect_borrow", lambda c: ({"USDT": 0.034, "ETH": 0.02}, []))
+    best = run_mod.borrow_rates(cfg)
+    assert best["USDT"] == 0.025      # OKX cheaper than Binance
+    assert best["BTC"] == 0.005       # only OKX
+    assert best["ETH"] == 0.02        # only Binance
