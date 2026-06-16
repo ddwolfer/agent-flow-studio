@@ -1,0 +1,18 @@
+reference:
+  ref_capital: 30000
+  default_horizon_days: 14
+  entry_slippage_assumption: 0.0005
+thresholds:
+  threshold_high: 0.05
+  threshold_mid: 0.03
+  renotify_delta: 0.02
+  rate_drop_ratio: 0.5
+  depeg_bps: 30
+  exit_lead_days: 2
+schedule_hours:
+  rates: 2
+  announcements: 1
+  depeg_minutes: 30
+assets: [BTC, ETH, USDT, USDC]
+exchanges: [okx]            # binance, bitget added at M4
+own_funds_mode: true        # true -> borrow_apr=0, net_spread=apr (M1 default)
