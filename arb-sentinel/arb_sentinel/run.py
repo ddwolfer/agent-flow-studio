@@ -1,6 +1,6 @@
 import datetime, sys
 from .collectors import okx, binance, bitget, announcements
-from . import engine, notify, llm
+from . import engine, notify, llm, exits
 from .models import Opportunity
 from .state import State
 
@@ -110,3 +110,74 @@ def run_announcements(cfg, state_path="state/state.json", today=None) -> int:
                 sent += 1
         st.record(o, tier)
     return sent
+
+
+def add_position(pos, state_path="state/state.json"):
+    """Register an entered position so exit detection can watch it. Returns new count."""
+    st = State(state_path)
+    st.data.setdefault("active_positions", []).append(pos)
+    st._save()
+    return len(st.data["active_positions"])
+
+
+def _okx_depeg_prices(cfg, pairs=("USDC-USDT",)):
+    """Map {instId: last_price_float} from OKX public tickers. Never raises."""
+    opps, errors = okx.collect_depeg(cfg, pairs=pairs)
+    for err in errors:
+        print(f"[depeg] {err}", file=sys.stderr)
+    prices = {}
+    for o in opps:
+        try:
+            prices[o.asset] = float(o.raw_snapshot.get("last"))
+        except (AttributeError, ValueError, TypeError):
+            pass
+    return prices
+
+
+def run_depeg(cfg, state_path="state/state.json", pairs=("USDC-USDT",)) -> int:
+    """Alert when a tracked stablecoin pair deviates from 1.0 beyond depeg_bps.
+    Light dedup: re-alert only if the deviation grows by >= depeg_bps/2 since last alert."""
+    st = State(state_path)
+    seen = st.data.setdefault("seen_depeg", {})
+    prices = _okx_depeg_prices(cfg, pairs=pairs)
+    sent = 0
+    for pair, price in prices.items():
+        dev_bps = abs(price - 1.0) * 10000
+        if dev_bps <= cfg.depeg_bps:
+            continue
+        prev = seen.get(pair)
+        if prev is not None and dev_bps < (abs(prev - 1.0) * 10000) + cfg.depeg_bps / 2:
+            continue                      # not materially worse than last alert → skip
+        if notify.send_message(f"🚨 脫鉤偵測 | {pair} 現價 {price} 偏離 1.0（{dev_bps:.0f} bps）", cfg):
+            sent += 1
+        seen[pair] = price
+    st._save()
+    return sent
+
+
+def run_exits(cfg, state_path="state/state.json", today=None) -> int:
+    """Check each active position for the 4 exit triggers (spec §7) and alert."""
+    today = today or _today()
+    st = State(state_path)
+    positions = st.data.get("active_positions", [])
+    if not positions:
+        return 0
+    rate_opps, _err = collect_all_rates(cfg)
+    apr_map = {(o.exchange, o.asset): o.apr for o in rate_opps}
+    prices = _okx_depeg_prices(cfg)
+    sent = 0
+    for pos in positions:
+        cur = apr_map.get((pos.get("exchange"), pos.get("asset")))
+        dprice = None
+        for inst, pr in prices.items():
+            if pos.get("asset") and pos["asset"] in inst:
+                dprice = pr; break
+        for msg in exits.check_position(pos, today, cur, dprice, cfg):
+            if notify.send_message(msg, cfg):
+                sent += 1
+    return sent
+
+
+def run_monitor(cfg, state_path="state/state.json", today=None) -> int:
+    """Combined position-watch task: de-peg + exit detection."""
+    return run_depeg(cfg, state_path) + run_exits(cfg, state_path, today)
