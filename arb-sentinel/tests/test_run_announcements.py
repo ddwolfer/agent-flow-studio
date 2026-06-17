@@ -3,6 +3,7 @@ from arb_sentinel import run as run_mod
 
 
 def test_run_announcements_alerts_new_promo_then_dedups(monkeypatch, cfg, tmp_path):
+    cfg.announcement_llm = True   # this test exercises the quantitative LLM path
     ann = {"_exchange": "bitget", "annId": "A1", "annTitle": "USDGO 補貼活動", "annDesc": "...", "annUrl": "http://x"}
     monkeypatch.setattr(run_mod.announcements, "fetch_all", lambda *a, **kw: ([ann], []))
     monkeypatch.setattr(run_mod.llm, "extract_promo", lambda title, body, **kw: {
@@ -26,6 +27,7 @@ def test_run_announcements_alerts_new_promo_then_dedups(monkeypatch, cfg, tmp_pa
 
 
 def test_run_announcements_skips_non_promo(monkeypatch, cfg, tmp_path):
+    cfg.announcement_llm = True
     ann = {"_exchange": "bitget", "annId": "B1", "annTitle": "系統維護公告", "annDesc": "...", "annUrl": "u"}
     monkeypatch.setattr(run_mod.announcements, "fetch_all", lambda *a, **kw: ([ann], []))
     monkeypatch.setattr(run_mod.llm, "extract_promo", lambda title, body, **kw: {"is_promotion": False})
@@ -33,3 +35,19 @@ def test_run_announcements_skips_non_promo(monkeypatch, cfg, tmp_path):
     n = run_mod.run_announcements(cfg, state_path=tmp_path / "s.json",
                                   today=datetime.date(2026, 6, 16), pause=0)
     assert n == 0
+
+
+def test_run_announcements_headsup_batches_promos(monkeypatch, cfg, tmp_path):
+    # default cfg has no announcement_llm -> deterministic heads-up path (no LLM)
+    anns = [
+        {"_exchange": "okx", "annId": "O1", "annTitle": "OKX Flash Earn is Now Live", "annUrl": "u1"},
+        {"_exchange": "bitget", "annId": "B9", "annTitle": "Scheduled Maintenance: Email", "annUrl": "u2"},
+    ]
+    monkeypatch.setattr(run_mod.announcements, "fetch_all", lambda *a, **kw: (anns, []))
+    monkeypatch.setattr(run_mod.llm, "extract_promo",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no LLM in heads-up mode")))
+    sent = []
+    monkeypatch.setattr(run_mod.notify, "send_message", lambda text, c, **kw: sent.append(text) or True)
+    n = run_mod.run_announcements(cfg, state_path=tmp_path / "s.json")
+    assert n == 1 and len(sent) == 1
+    assert "Flash Earn" in sent[0] and "Maintenance" not in sent[0]   # only the promo batched

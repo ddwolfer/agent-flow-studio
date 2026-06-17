@@ -53,6 +53,21 @@ def format_opportunity(o: Opportunity, net, est, flag, tier, cfg) -> str:
     return "\n".join(lines)
 
 
+def format_headsup(items, limit=20) -> str:
+    """items = [(exchange, title, url)]. One batched WATCH heads-up; each line names
+    the exchange. Qualitative — no APR math, just 'don't miss this activity'."""
+    e = lambda s: html.escape(str(s))
+    lines = [f"🟡 <b>套利哨兵 | 新活動 heads-up</b>（{len(items)} 則）", ""]
+    for exch, title, url in items[:limit]:
+        lines.append(f"• <b>{e(exch.upper())}</b> | {e(title)}")
+        if url:
+            lines.append(f"  🔗 {e(url)}")
+    if len(items) > limit:
+        lines.append(f"…+{len(items) - limit} 則")
+    lines.append("\n⚠️ 收益/條件/時間窗請進各家 App 確認")
+    return "\n".join(lines)
+
+
 def format_digest(graded: list, cfg) -> str:
     """graded = [(Opportunity, net, tier)]. Compact baseline summary, grouped by exchange."""
     lines = [f"🟡 <b>套利哨兵 | 利率基線</b> ({len(graded)} 項)"]

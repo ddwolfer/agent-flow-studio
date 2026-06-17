@@ -91,6 +91,40 @@ def _parse_date(s):
 
 
 def run_announcements(cfg, state_path="state/state.json", today=None, max_llm=20, pause=2.5) -> int:
+    """Announcement promos. Default = deterministic heads-up (no LLM, zero tokens). Set
+    config `announcement_llm: true` to use Groq for quantitative promo parsing instead."""
+    if getattr(cfg, "announcement_llm", False):
+        return _run_announcements_llm(cfg, state_path, today, max_llm, pause)
+    return _run_announcements_headsup(cfg, state_path)
+
+
+def _run_announcements_headsup(cfg, state_path="state/state.json", limit=20) -> int:
+    """Deterministic promo heads-up — surface NEW promo-looking announcements (no LLM),
+    batched into ONE WATCH message so a backlog never spams. Never raises out."""
+    st = State(state_path)
+    anns, errors = announcements.fetch_all(cfg)
+    for err in errors:
+        print(f"[ann] {err}", file=sys.stderr)
+    fresh = []
+    for a in anns:
+        exch = a.get("_exchange", "bitget")
+        ann_id = a.get("annId")
+        if not ann_id:
+            continue
+        seen_key = f"{exch}:{ann_id}"
+        if not st.is_new_announcement(seen_key):
+            continue
+        title = a.get("annTitle", "")
+        is_promo = announcements.looks_like_promo(title, a.get("annType"))
+        st.mark_announcement(seen_key, {"exchange": exch, "title": title, "is_promo": is_promo})
+        if is_promo:
+            fresh.append((exch, title, a.get("annUrl")))
+    if not fresh:
+        return 0
+    return 1 if notify.send_message(notify.format_headsup(fresh, limit=limit), cfg) else 0
+
+
+def _run_announcements_llm(cfg, state_path="state/state.json", today=None, max_llm=20, pause=2.5) -> int:
     """Pull exchange announcements, LLM-extract promo structure for NEW ones, grade,
     and alert actionable promotions. The LLM (Groq) is called only on un-seen
     announcements, so cost is bounded. Returns #notifications sent. Never raises out."""

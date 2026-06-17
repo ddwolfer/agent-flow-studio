@@ -12,6 +12,21 @@ PROMO_TYPES = ("latest_news", "product_updates")                  # Bitget promo
 OKX_ANN = "https://www.okx.com/api/v5/support/announcements"       # official public, keyless
 OKX_PROMO_TYPES = ("latest-events", "announcements-others")        # OKX promo/event types
 
+# Deterministic promo detector for heads-up mode (no LLM). Biased to surface.
+PROMO_KEYWORDS = (
+    "earn", "cedefi", "launchpool", "launchpad", "jumpstart", "staking", "stake",
+    "savings", "airdrop", "bonus", "reward", "campaign", "trade-to-earn",
+    "trade to earn", "boost", "apr", "apy", "yield", "dual investment", "giveaway",
+    "理財", "活期", "補貼", "空投", "瓜分", "高息", "雙幣", "賺幣", "質押", "獎勵", "回饋", "活動",
+)
+
+
+def looks_like_promo(title, ann_type=None) -> bool:
+    """Cheap keyword check: does this announcement look like an Earn/yield/reward
+    activity worth a heads-up? Biased to surface (you confirm details in the App)."""
+    t = (title or "").lower()
+    return any(k in t for k in PROMO_KEYWORDS)
+
 
 def fetch_bitget(language="zh_CN", timeout=20.0):
     """Return (announcements, errors). Each ann dict has annId, annTitle, annDesc,

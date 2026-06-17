@@ -50,7 +50,7 @@ cp .env.example .env     # fill in credentials (see below)
 | `test` | post a wiring test to the Telegram topic | TG creds |
 | `rates` | pull flexible-earn APR (3 exchanges), grade, alert actionable, dedup | TG; exchange keys for Binance/Bitget |
 | `digest` | post a grouped baseline-rate summary (all exchanges) | TG + keys |
-| `announcements` | pull Bitget announcements, Groq-extract NEW promos, alert actionable | TG + GROQ |
+| `announcements` | pull Bitget + OKX announcements → **deterministic promo heads-up** (no LLM), batched into one WATCH message. Set `announcement_llm: true` for Groq quantitative parsing | TG (GROQ only if `announcement_llm`) |
 | `depeg` | alert when a tracked stablecoin pair deviates > `depeg_bps` from 1.0 | TG |
 | `exits` | check `active_positions` for the 4 exit triggers (spec §7) | TG + keys |
 | `monitor` | `depeg` + `exits` combined | TG + keys |
