@@ -61,3 +61,53 @@ def test_tier_selected_by_ref_capital_and_promo_flag(monkeypatch):
     assert abs(u.apr - 0.0131) < 1e-9
     assert u.apr_is_promotional is True
     assert "6.97%" in (u.subsidy_note or "")
+
+
+def test_applicable_apy_converts_usd_ref_capital_to_coin_units():
+    # Bitget tier bands are denominated in the COIN, but ref_capital is USD.
+    # For BTC at spot ~70k, 30000 USD = 0.428 BTC — should land in the [0, 0.5)
+    # tier (the middle, 5% rate), NOT fall beyond all bands into the last
+    # smallest-tier rate.
+    apylist = [
+        {"rateLevel": "0", "currentApy": "8.0", "minStepVal": "0",    "maxStepVal": "0.5"},
+        {"rateLevel": "1", "currentApy": "5.0", "minStepVal": "0.5",  "maxStepVal": "5"},
+        {"rateLevel": "2", "currentApy": "1.5", "minStepVal": "5",    "maxStepVal": "0"},
+    ]
+    # Old behaviour (no spot_usd): 30000 > 5 → falls through to last tier (1.5%)
+    legacy = bitget._applicable_apy(apylist, ref_capital=30000)
+    assert legacy is not None and legacy[0] == 1.5
+    # New behaviour: spot_usd=70000 → 30000/70000 ≈ 0.428 → tier 0 band [0, 0.5) → 8.0%
+    fixed = bitget._applicable_apy(apylist, ref_capital=30000, spot_usd=70000)
+    assert fixed is not None
+    assert fixed[0] == 8.0
+    # Stablecoin path (spot_usd=1.0 or None): 30000 → tier 2 [5, ∞) → 1.5%
+    stable = bitget._applicable_apy(apylist, ref_capital=30000, spot_usd=1.0)
+    assert stable[0] == 1.5
+
+
+def test_collect_rates_fetches_spot_for_non_stables(monkeypatch):
+    # The collector must look up a coin-to-USD spot for non-stables (e.g. BTC)
+    # via Bitget's keyless spot ticker, so band matching lands on the right
+    # tier. Stables (USDT/USDC) skip the spot fetch and treat ref_capital as
+    # coin units.
+    products = {"code": "00000", "data": [
+        {"coin": "BTC", "periodType": "flexible", "apyType": "ladder", "apyList": [
+            {"rateLevel": "0", "currentApy": "8.0", "minStepVal": "0",   "maxStepVal": "0.5"},
+            {"rateLevel": "1", "currentApy": "5.0", "minStepVal": "0.5", "maxStepVal": "5"},
+            {"rateLevel": "2", "currentApy": "1.5", "minStepVal": "5",   "maxStepVal": "0"}]},
+    ]}
+    ticker = {"code": "00000", "data": [{"symbol": "BTCUSDT", "lastPr": "70000"}]}
+    fetched_symbols = []
+    def fake_get(self, url, **kw):
+        if "spot/market/tickers" in url:
+            fetched_symbols.append(kw.get("params", {}).get("symbol"))
+            return httpx.Response(200, json=ticker, request=httpx.Request("GET", url))
+        # signed savings/product
+        return httpx.Response(200, json=products, request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    opps, errors = bitget.collect_rates(_cfg(assets=["BTC"], ref_capital=30000))
+    assert errors == []
+    assert opps[0].asset == "BTC"
+    # 30000 USD / 70000 USD/BTC = 0.428 BTC → tier 0 band [0, 0.5) → 8.0%
+    assert abs(opps[0].apr - 0.08) < 1e-9
+    assert "BTCUSDT" in fetched_symbols
