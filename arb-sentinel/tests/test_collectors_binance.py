@@ -55,3 +55,30 @@ def test_collect_borrow_annualises_hourly_rate(monkeypatch):
 def test_collect_borrow_missing_keys_skips():
     rates, errors = binance.collect_borrow(_cfg(binance_api_key="", binance_api_secret=""))
     assert rates == {} and len(errors) == 1
+
+
+def test_collect_borrow_handles_dict_shaped_error_response(monkeypatch):
+    # Binance sometimes returns HTTP 200 + dict-shaped error envelope
+    # ({"code": -1234, "msg": "..."}) instead of the documented list of rows.
+    # Iterating over a dict yields str keys, so `row.get("asset")` would
+    # AttributeError out of collect_borrow and violate never-raise.
+    err_body = {"code": -1003, "msg": "Too many requests"}
+    def fake_get(self, url, **kw):
+        return httpx.Response(200, json=err_body, request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    rates, errors = binance.collect_borrow(_cfg())
+    assert rates == {}
+    assert any("Too many requests" in e or "shape" in e or "code" in e.lower()
+               for e in errors)
+
+
+def test_collect_rates_handles_dict_shaped_error_response(monkeypatch):
+    # Same defense for collect_rates: signed FLEX endpoint may return
+    # {"code":-2015,"msg":"Invalid API-key"} as the JSON body even on HTTP 200.
+    err_body = {"code": -2015, "msg": "Invalid API-key"}
+    def fake_get(self, url, **kw):
+        return httpx.Response(200, json=err_body, request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    opps, errors = binance.collect_rates(_cfg())
+    assert opps == []
+    assert any("Invalid API-key" in e or "code" in e.lower() for e in errors)

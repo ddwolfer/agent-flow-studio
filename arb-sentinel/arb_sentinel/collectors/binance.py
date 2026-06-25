@@ -30,6 +30,21 @@ def _signed_get(path, params, key, secret, timeout=20.0):
         return None, f"binance {path} {type(e).__name__}: {e}"
 
 
+def _binance_error_envelope(data) -> str | None:
+    """Binance returns HTTP 200 + {"code":-1003,"msg":"..."} for some error classes
+    (rate limit, bad signature). Detect and surface as a structured error string."""
+    if isinstance(data, dict) and "code" in data and "msg" in data:
+        try:
+            code = int(data["code"])
+        except (ValueError, TypeError):
+            code = None
+        # Binance success endpoints don't carry a top-level code; negative codes
+        # are the documented error sentinel.
+        if code is None or code < 0:
+            return f"code {data.get('code')}: {data.get('msg')}"
+    return None
+
+
 def collect_rates(cfg) -> tuple[list[Opportunity], list[str]]:
     """Binance Simple Earn flexible APR for cfg.assets (SIGNED, read-only key).
     latestAnnualPercentageRate is already a decimal string. Never raises."""
@@ -42,7 +57,11 @@ def collect_rates(cfg) -> tuple[list[Opportunity], list[str]]:
         data, err = _signed_get(FLEX, {"asset": asset, "size": 100}, key, secret)
         if err:
             errors.append(err); continue
-        rows = data.get("rows") or []
+        env_err = _binance_error_envelope(data)
+        if env_err:
+            errors.append(f"binance {asset} {env_err}"); continue
+        rows = data.get("rows") if isinstance(data, dict) else None
+        rows = rows or []
         row = next((x for x in rows if x.get("asset") == asset and x.get("canPurchase")), None)
         if row is None:
             row = next((x for x in rows if x.get("asset") == asset), None)
@@ -73,8 +92,14 @@ def collect_borrow(cfg) -> tuple[dict, list[str]]:
                             key, secret)
     if err:
         return {}, [err]
+    env_err = _binance_error_envelope(data)
+    if env_err:
+        return {}, [f"binance borrow {env_err}"]
+    rows = data if isinstance(data, list) else []
     out = {}
-    for row in (data or []):
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
         asset = row.get("asset")
         try:
             out[asset] = float(row["nextHourlyInterestRate"]) * 24 * 365
