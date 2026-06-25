@@ -21,6 +21,11 @@ BINANCE_ANN = ("https://www.binance.com/bapi/composite/v1/public/cms/"
 BINANCE_PROMO_CATALOGS = ("49", "93", "128")
 BINANCE_ARTICLE_URL = "https://www.binance.com/en/support/announcement/{code}"
 
+# Hard cap on pagination per source per launchd cycle. A 24-hour gap rarely
+# produces more than a handful of items; cap defends against an infinite
+# walk if an upstream API changes its short-page semantics.
+_MAX_PAGES = 3
+
 # Deterministic promo detector for heads-up mode (no LLM). Biased to surface.
 # Chinese keywords cover both Traditional (OKX/Bitget zh_TW) and Simplified
 # (Bitget zh_CN default) — codepoint-exact `in` matching, so 理財 ≠ 理财.
@@ -68,26 +73,34 @@ def fetch_bitget(language="zh_CN", timeout=20.0):
 def fetch_okx(timeout=20.0):
     """OKX official public announcements (keyless), promo/event types only. Normalised
     to the Bitget shape (annId/annTitle/annDesc/annUrl/annType/cTime). OKX's list has no
-    body, so annDesc is empty and the LLM classifies from the title. Never raises."""
+    body, so annDesc is empty and the LLM classifies from the title. Walks pages 1..N
+    via the `page` query param until a page returns no items or the safety cap fires.
+    Never raises."""
     anns, errors = [], []
     for ann_type in OKX_PROMO_TYPES:
-        try:
-            with httpx.Client(timeout=timeout) as c:
-                r = c.get(OKX_ANN, params={"annType": ann_type})
-            if r.status_code != 200:
-                errors.append(f"okx ann {ann_type} HTTP {r.status_code}"); continue
-            j = r.json()
-            if str(j.get("code")) != "0":
-                errors.append(f"okx ann {ann_type} code {j.get('code')}: {j.get('msg')}")
-                continue
-            for page in (j.get("data") or []):
-                for d in (page.get("details") or []):
-                    anns.append({"_exchange": "okx", "annId": d.get("url"),
-                                 "annTitle": d.get("title"), "annDesc": "",
-                                 "annUrl": d.get("url"), "annType": d.get("annType"),
-                                 "cTime": d.get("pTime")})
-        except Exception as e:
-            errors.append(f"okx ann {ann_type} {type(e).__name__}: {e}")
+        for page in range(1, _MAX_PAGES + 1):
+            try:
+                with httpx.Client(timeout=timeout) as c:
+                    r = c.get(OKX_ANN, params={"annType": ann_type, "page": page})
+                if r.status_code != 200:
+                    errors.append(f"okx ann {ann_type} HTTP {r.status_code}"); break
+                j = r.json()
+                if str(j.get("code")) != "0":
+                    errors.append(f"okx ann {ann_type} code {j.get('code')}: {j.get('msg')}")
+                    break
+                page_items = 0
+                for page_obj in (j.get("data") or []):
+                    for d in (page_obj.get("details") or []):
+                        anns.append({"_exchange": "okx", "annId": d.get("url"),
+                                     "annTitle": d.get("title"), "annDesc": "",
+                                     "annUrl": d.get("url"), "annType": d.get("annType"),
+                                     "cTime": d.get("pTime")})
+                        page_items += 1
+                if page_items == 0:
+                    break
+            except Exception as e:
+                errors.append(f"okx ann {ann_type} {type(e).__name__}: {e}")
+                break
     return anns, errors
 
 
@@ -95,46 +108,62 @@ def fetch_binance(timeout=20.0, page_size=20):
     """Binance public CMS announcements across promo-relevant catalogs. Normalised
     to the Bitget shape (annId/annTitle/annDesc/annUrl/annType/cTime). The catalog
     list endpoint returns titles only — annDesc is empty (LLM/keyword classifies
-    from title). Never raises. `annId` is the article `code` (stable hex hash;
-    `id` field is also stable but `code` matches the public URL slug)."""
+    from title). Walks pageNo=1..N until a short page (len < page_size) or the
+    safety cap fires. Never raises. `annId` is the article `code` (stable hex
+    hash; `id` field is also stable but `code` matches the public URL slug)."""
     anns, errors = [], []
     for cat in BINANCE_PROMO_CATALOGS:
-        try:
-            with httpx.Client(timeout=timeout) as c:
-                r = c.get(BINANCE_ANN, params={
-                    "catalogId": cat, "pageNo": 1, "pageSize": page_size,
-                })
-            if r.status_code != 200:
-                errors.append(f"binance ann {cat} HTTP {r.status_code}"); continue
-            j = r.json()
-            if str(j.get("code")) != "000000":
-                errors.append(f"binance ann {cat} code {j.get('code')}: "
-                              f"{j.get('message')}")
-                continue
-            for art in ((j.get("data") or {}).get("articles") or []):
-                code = art.get("code")
-                if not code:
-                    continue
-                anns.append({
-                    "_exchange": "binance",
-                    "annId": code,
-                    "annTitle": art.get("title") or "",
-                    "annDesc": "",
-                    "annUrl": BINANCE_ARTICLE_URL.format(code=code),
-                    "annType": cat,
-                    "cTime": str(art.get("releaseDate") or ""),
-                })
-        except Exception as e:
-            errors.append(f"binance ann {cat} {type(e).__name__}: {e}")
+        for page_no in range(1, _MAX_PAGES + 1):
+            try:
+                with httpx.Client(timeout=timeout) as c:
+                    r = c.get(BINANCE_ANN, params={
+                        "catalogId": cat, "pageNo": page_no, "pageSize": page_size,
+                    })
+                if r.status_code != 200:
+                    errors.append(f"binance ann {cat} HTTP {r.status_code}"); break
+                j = r.json()
+                if str(j.get("code")) != "000000":
+                    errors.append(f"binance ann {cat} code {j.get('code')}: "
+                                  f"{j.get('message')}")
+                    break
+                articles = (j.get("data") or {}).get("articles") or []
+                for art in articles:
+                    code = art.get("code")
+                    if not code:
+                        continue
+                    anns.append({
+                        "_exchange": "binance",
+                        "annId": code,
+                        "annTitle": art.get("title") or "",
+                        "annDesc": "",
+                        "annUrl": BINANCE_ARTICLE_URL.format(code=code),
+                        "annType": cat,
+                        "cTime": str(art.get("releaseDate") or ""),
+                    })
+                if len(articles) < page_size:
+                    break              # short page → no more
+            except Exception as e:
+                errors.append(f"binance ann {cat} {type(e).__name__}: {e}")
+                break
     return anns, errors
 
 
 def fetch_all(cfg=None, language="zh_CN"):
-    """All exchange announcements, each tagged with `_exchange`: Bitget + OKX +
-    Binance (all keyless public CMS APIs). Never raises."""
-    b, e1 = fetch_bitget(language=language)
-    for a in b:
-        a["_exchange"] = "bitget"
-    o, e2 = fetch_okx()
-    bn, e3 = fetch_binance()
-    return b + o + bn, e1 + e2 + e3
+    """All exchange announcements, each tagged with `_exchange`. Honours
+    `cfg.exchanges` if present (only fetches the listed exchanges); defaults
+    to all three (bitget + okx + binance) when cfg is None or missing the
+    attribute. Never raises."""
+    enabled = set(getattr(cfg, "exchanges", None) or ("bitget", "okx", "binance"))
+    anns, errors = [], []
+    if "bitget" in enabled:
+        b, e1 = fetch_bitget(language=language)
+        for a in b:
+            a["_exchange"] = "bitget"
+        anns.extend(b); errors.extend(e1)
+    if "okx" in enabled:
+        o, e2 = fetch_okx()
+        anns.extend(o); errors.extend(e2)
+    if "binance" in enabled:
+        bn, e3 = fetch_binance()
+        anns.extend(bn); errors.extend(e3)
+    return anns, errors

@@ -79,6 +79,93 @@ def test_fetch_binance_never_raises(monkeypatch):
     assert anns == [] and len(errors) >= 1
 
 
+def test_fetch_okx_paginates_until_empty(monkeypatch):
+    # OKX's /api/v5/support/announcements is paginated via the `page` query
+    # param. A single launchd window can land >10 promo items; without
+    # pagination the older ones get truncated and the state dedup means
+    # they NEVER show up later.
+    pages = {
+        ("latest-events", "1"): [{"annType": "latest-events", "title": "p1-a",
+                                   "url": "https://okx/a", "pTime": "1"}],
+        ("latest-events", "2"): [{"annType": "latest-events", "title": "p1-b",
+                                   "url": "https://okx/b", "pTime": "2"}],
+        ("latest-events", "3"): [],
+        ("announcements-others", "1"): [],
+    }
+    def fake_get(self, url, **kw):
+        params = kw.get("params", {})
+        ann_type = params.get("annType")
+        page = str(params.get("page", "1"))
+        details = pages.get((ann_type, page), [])
+        return httpx.Response(200, json={"code": "0", "data": [{"details": details}]},
+                              request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    anns, errors = announcements.fetch_okx()
+    titles = [a["annTitle"] for a in anns]
+    assert errors == []
+    assert "p1-a" in titles and "p1-b" in titles, titles
+
+
+def test_fetch_binance_paginates_until_short_page(monkeypatch):
+    # Two pages of 2 items for catalog 49, then a short page (1 item) means
+    # we stop. Stop after the FIRST short page; don't keep walking forever.
+    pages_seen = {}
+    def fake_get(self, url, **kw):
+        params = kw.get("params", {})
+        cat = str(params.get("catalogId"))
+        page_no = int(params.get("pageNo", 1))
+        if cat == "49":
+            payload = ([{"id": 1, "code": f"a{page_no}", "title": f"t{page_no}a"},
+                        {"id": 2, "code": f"b{page_no}", "title": f"t{page_no}b"}]
+                       if page_no <= 2
+                       else [{"id": 3, "code": f"c{page_no}", "title": "tail"}])
+        else:
+            payload = []
+        pages_seen[(cat, page_no)] = len(payload)
+        return httpx.Response(
+            200, json={"code": "000000", "data": {"articles": payload}},
+            request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    anns, errors = announcements.fetch_binance(page_size=2)
+    assert errors == []
+    cat49 = [a for a in anns if a["annType"] == "49"]
+    assert len(cat49) == 5     # 2 + 2 + 1, then stop
+
+
+def test_fetch_all_respects_cfg_exchanges(monkeypatch):
+    # cfg.exchanges = ["okx"] means the user has explicitly turned off bitget
+    # and binance — fetch_all must not silently call them.
+    calls = []
+    def fake_bitget(*a, **kw):
+        calls.append("bitget"); return ([], [])
+    def fake_okx(*a, **kw):
+        calls.append("okx"); return ([], [])
+    def fake_binance(*a, **kw):
+        calls.append("binance"); return ([], [])
+    monkeypatch.setattr(announcements, "fetch_bitget", fake_bitget)
+    monkeypatch.setattr(announcements, "fetch_okx", fake_okx)
+    monkeypatch.setattr(announcements, "fetch_binance", fake_binance)
+
+    import types
+    cfg_only_okx = types.SimpleNamespace(exchanges=["okx"])
+    announcements.fetch_all(cfg_only_okx)
+    assert calls == ["okx"]
+
+    calls.clear()
+    cfg_only_binance = types.SimpleNamespace(exchanges=["binance"])
+    announcements.fetch_all(cfg_only_binance)
+    assert calls == ["binance"]
+
+
+def test_fetch_all_defaults_to_all_three_when_cfg_missing(monkeypatch):
+    calls = []
+    monkeypatch.setattr(announcements, "fetch_bitget", lambda *a, **kw: (calls.append("bitget") or [], []))
+    monkeypatch.setattr(announcements, "fetch_okx", lambda *a, **kw: (calls.append("okx") or [], []))
+    monkeypatch.setattr(announcements, "fetch_binance", lambda *a, **kw: (calls.append("binance") or [], []))
+    announcements.fetch_all()
+    assert set(calls) == {"bitget", "okx", "binance"}
+
+
 def test_fetch_all_includes_binance(monkeypatch):
     # All three exchanges return one item each; fetch_all must surface all
     # three tagged with the right _exchange value.
