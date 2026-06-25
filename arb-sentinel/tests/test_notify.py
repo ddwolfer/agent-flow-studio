@@ -31,3 +31,17 @@ def test_send_returns_false_on_non_200(monkeypatch, cfg):
         return httpx.Response(500, text="err", request=httpx.Request("POST", url))
     monkeypatch.setattr(httpx.Client, "post", fake_post)
     assert notify.send_message("hi", cfg) is False
+
+
+def test_send_fails_closed_when_topic_arb_missing(monkeypatch, cfg):
+    # Empty TELEGRAM_TOPIC_ARB used to silently fall through and send the alert
+    # to the group's General chat instead of topic 1390 — violates the
+    # "every arb alert lives in topic 1390" routing rule. Must fail-closed.
+    posted = {"called": False}
+    def fake_post(self, url, data=None, **kw):
+        posted["called"] = True
+        return httpx.Response(200, json={"ok": True}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    cfg.telegram_topic_arb = ""
+    assert notify.send_message("hi", cfg) is False
+    assert posted["called"] is False, "must not POST to Telegram when topic_arb empty"
