@@ -1,7 +1,16 @@
-import json, pathlib
+import datetime, json, os, pathlib, tempfile
 from .models import Opportunity, stable_id
 
 _TIER_RANK = {"LOG_ONLY": 0, "WATCH": 1, "GOOD": 2, "ACT_NOW": 3}
+
+# Absolute default path under the package's repo root. Used when callers don't
+# pass an explicit path. Previously every run.py entry defaulted to the
+# cwd-relative "state/state.json", which silently diverged whenever a harness
+# (CLI test, REPL, alternate scheduler) ran without `cd $ROOT` first —
+# producing an empty state and re-broadcasting every alert.
+_DEFAULT_STATE_PATH = (
+    pathlib.Path(__file__).resolve().parent.parent / "state" / "state.json"
+)
 
 
 class State:
@@ -20,16 +29,36 @@ class State:
     `binance-promotion-*` entries in `seen_opportunities` freeze in time once
     `announcement_llm` is flipped to false — by design, not a bug. Dedup
     continuity across path-switches works via the shared `seen_announcements`
-    table. See run.py::run_announcements docstring."""
+    table. See run.py::run_announcements docstring.
 
-    def __init__(self, path):
-        self.path = pathlib.Path(path)
+    Persistence guarantees:
+    - Default `path` is absolute (under the package repo), not cwd-relative.
+    - `_save()` is atomic via tempfile+os.replace, so a kill mid-write cannot
+      corrupt the file.
+    - On parse failure, the broken file is backed up as
+      `state.json.corrupt-<UTC>` before reset — recoverable, not silently
+      forgotten."""
+
+    def __init__(self, path=None):
+        self.path = pathlib.Path(path) if path is not None else _DEFAULT_STATE_PATH
         self.data = {"seen_opportunities": {}, "active_positions": []}
         if self.path.exists():
+            raw = None
             try:
-                self.data = json.loads(self.path.read_text("utf-8"))
+                raw = self.path.read_text("utf-8")
+                self.data = json.loads(raw)
             except Exception:
-                pass
+                # Back up the broken file before resetting so we can recover
+                # the seen-set after the fact (otherwise a partial write +
+                # silent reset re-broadcasts every alert).
+                if raw is not None:
+                    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                    try:
+                        backup = self.path.with_name(f"{self.path.name}.corrupt-{ts}")
+                        backup.write_text(raw, "utf-8")
+                    except Exception:
+                        pass        # last-ditch: drop the backup, still reset
+                self.data = {"seen_opportunities": {}, "active_positions": []}
         if not isinstance(self.data, dict):          # corrupt/wrong-shape JSON → reset
             self.data = {"seen_opportunities": {}, "active_positions": []}
         self.data.setdefault("seen_opportunities", {})
@@ -61,4 +90,22 @@ class State:
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), "utf-8")
+        # Atomic write: stage in a sibling temp file, fsync, then os.replace.
+        # Path.write_text used to leave a half-written state.json on kill,
+        # which __init__ then silently reset → every alert re-broadcast.
+        payload = json.dumps(self.data, ensure_ascii=False, indent=2)
+        fd, tmp = tempfile.mkstemp(
+            prefix=f"{self.path.name}.", suffix=".tmp", dir=str(self.path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.path)
+        except Exception:
+            # Best-effort cleanup of the staged temp file; never raise out.
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise

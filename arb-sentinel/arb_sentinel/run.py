@@ -37,7 +37,7 @@ def borrow_rates(cfg):
     return best
 
 
-def run_rates(cfg, state_path="state/state.json", today=None) -> int:
+def run_rates(cfg, state_path=None, today=None) -> int:
     """Collect OKX rates -> grade -> dedup -> alert actionable. Returns #notifications sent."""
     today = today or _today()
     st = State(state_path)
@@ -63,7 +63,7 @@ def run_rates(cfg, state_path="state/state.json", today=None) -> int:
     return sent
 
 
-def run_digest(cfg, state_path="state/state.json", today=None) -> int:
+def run_digest(cfg, state_path=None, today=None) -> int:
     """Post a compact baseline rate digest (proves the pipeline; not deduped)."""
     today = today or _today()
     opps, errors = collect_all_rates(cfg)
@@ -90,7 +90,7 @@ def _parse_date(s):
         return None
 
 
-def run_announcements(cfg, state_path="state/state.json", today=None, max_llm=20, pause=2.5) -> int:
+def run_announcements(cfg, state_path=None, today=None, max_llm=20, pause=2.5) -> int:
     """Announcement promos. Default = deterministic heads-up (no LLM, zero tokens). Set
     config `announcement_llm: true` to use Groq for quantitative promo parsing instead.
 
@@ -106,7 +106,7 @@ def run_announcements(cfg, state_path="state/state.json", today=None, max_llm=20
     return _run_announcements_headsup(cfg, state_path)
 
 
-def _run_announcements_headsup(cfg, state_path="state/state.json", limit=20) -> int:
+def _run_announcements_headsup(cfg, state_path=None, limit=20) -> int:
     """Deterministic promo heads-up — surface NEW promo-looking announcements (no LLM),
     batched into ONE WATCH message so a backlog never spams. Never raises out."""
     st = State(state_path)
@@ -132,7 +132,7 @@ def _run_announcements_headsup(cfg, state_path="state/state.json", limit=20) -> 
     return 1 if notify.send_message(notify.format_headsup(fresh, limit=limit), cfg) else 0
 
 
-def _run_announcements_llm(cfg, state_path="state/state.json", today=None, max_llm=20, pause=2.5) -> int:
+def _run_announcements_llm(cfg, state_path=None, today=None, max_llm=20, pause=2.5) -> int:
     """Pull exchange announcements, LLM-extract promo structure for NEW ones, grade,
     and alert actionable promotions. The LLM (Groq) is called only on un-seen
     announcements, so cost is bounded. Returns #notifications sent. Never raises out."""
@@ -186,7 +186,7 @@ def _run_announcements_llm(cfg, state_path="state/state.json", today=None, max_l
     return sent
 
 
-def add_position(pos, state_path="state/state.json"):
+def add_position(pos, state_path=None):
     """Register an entered position so exit detection can watch it. Returns new count."""
     st = State(state_path)
     st.data.setdefault("active_positions", []).append(pos)
@@ -208,7 +208,7 @@ def _okx_depeg_prices(cfg, pairs=("USDC-USDT",)):
     return prices
 
 
-def run_depeg(cfg, state_path="state/state.json", pairs=("USDC-USDT",)) -> int:
+def run_depeg(cfg, state_path=None, pairs=("USDC-USDT",)) -> int:
     """Alert when a tracked stablecoin pair deviates from 1.0 beyond depeg_bps.
     Light dedup: re-alert only if the deviation grows by >= depeg_bps/2 since last alert."""
     st = State(state_path)
@@ -229,7 +229,7 @@ def run_depeg(cfg, state_path="state/state.json", pairs=("USDC-USDT",)) -> int:
     return sent
 
 
-def run_exits(cfg, state_path="state/state.json", today=None) -> int:
+def run_exits(cfg, state_path=None, today=None) -> int:
     """Check each active position for the 4 exit triggers (spec §7) and alert."""
     today = today or _today()
     st = State(state_path)
@@ -252,6 +252,6 @@ def run_exits(cfg, state_path="state/state.json", today=None) -> int:
     return sent
 
 
-def run_monitor(cfg, state_path="state/state.json", today=None) -> int:
+def run_monitor(cfg, state_path=None, today=None) -> int:
     """Combined position-watch task: de-peg + exit detection."""
     return run_depeg(cfg, state_path) + run_exits(cfg, state_path, today)
