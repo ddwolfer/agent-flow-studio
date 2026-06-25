@@ -28,7 +28,7 @@ _MAX_PAGES = 3
 
 # Deterministic promo detector for heads-up mode (no LLM). Biased to surface.
 # Chinese keywords cover both Traditional (OKX/Bitget zh_TW) and Simplified
-# (Bitget zh_CN default) — codepoint-exact `in` matching, so 理財 ≠ 理财.
+# (Bitget zh_CN default) — codepoint-exact `in` matching, so 理財 ≠ 理织.
 PROMO_KEYWORDS = (
     "earn", "cedefi", "launchpool", "launchpad", "jumpstart", "staking", "stake",
     "savings", "airdrop", "bonus", "reward", "campaign", "trade-to-earn",
@@ -41,10 +41,25 @@ PROMO_KEYWORDS = (
     "活期", "空投", "瓜分", "高息",
 )
 
+# Categories that are 100% promo by definition — every item qualifies, no
+# keyword check needed. Catches promos with off-keyword titles like
+# "Binance Wallet x Project" (catalog 93) or "Join the Q3 Beautiful Game"
+# (OKX latest-events). Bitget's annType values are not in this set because
+# `latest_news` / `product_updates` both mix promos with listing/maintenance
+# notices — they still need the keyword filter.
+_PURE_PROMO_ANN_TYPES = frozenset({
+    "93",                # Binance Latest Activities
+    "128",               # Binance HODLer Airdrops
+    "latest-events",     # OKX promo/event tier
+})
+
 
 def looks_like_promo(title, ann_type=None) -> bool:
-    """Cheap keyword check: does this announcement look like an Earn/yield/reward
-    activity worth a heads-up? Biased to surface (you confirm details in the App)."""
+    """Cheap promo detector: returns True if either the source category is
+    a pure-promo tier (Binance catalog 93/128, OKX latest-events) OR the
+    title hits a keyword. Biased to surface (you confirm details in the App)."""
+    if ann_type is not None and str(ann_type) in _PURE_PROMO_ANN_TYPES:
+        return True
     t = (title or "").lower()
     return any(k in t for k in PROMO_KEYWORDS)
 

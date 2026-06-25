@@ -204,6 +204,23 @@ def test_looks_like_promo():
     assert not announcements.looks_like_promo("OKX to delist FOO perpetual")
 
 
+def test_looks_like_promo_uses_ann_type_pure_promo_categories():
+    # Binance catalog 93 (Latest Activities) and OKX latest-events are PURE
+    # promo categories — every item is promotional regardless of title. The
+    # ann_type kwarg used to be ignored, so titles like "Binance Wallet x ABC
+    # Project" (no Earn/airdrop keyword) were silently dropped despite being
+    # actual promos.
+    assert announcements.looks_like_promo("Binance Wallet x ABC Project", ann_type="93")
+    assert announcements.looks_like_promo("anything goes here", ann_type="latest-events")
+    # Defensive: ann_type for a non-promo category falls through to the
+    # keyword check; an unrelated title in catalog 48 (New Listings) stays
+    # negative unless a keyword matches.
+    assert not announcements.looks_like_promo("OKX to delist FOO perpetual",
+                                              ann_type="48")
+    assert not announcements.looks_like_promo("Notice of Removal of Spot Pairs",
+                                              ann_type="latest_news")
+
+
 def test_looks_like_promo_matches_simplified_chinese():
     # Bitget zh_CN feed returns Simplified titles; PROMO_KEYWORDS used to be
     # Traditional-only so 44 fetched / 1 flagged. Codepoint-exact `in` matching
