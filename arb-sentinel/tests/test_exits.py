@@ -35,3 +35,21 @@ def test_nothing_triggers_when_healthy(cfg):
 def test_messages_include_exchange_label(cfg):
     msgs = check_position(_pos(exchange="okx", activity_end_date="2026-06-17"), TODAY, None, None, cfg)
     assert msgs and all("OKX USDGO" in m for m in msgs)   # every alert names the exchange
+
+
+def test_messages_html_escape_user_strings(cfg):
+    # notify.send_message posts with parse_mode=HTML. Exit messages embed
+    # pos['exchange'] and pos['asset'] directly. A malicious / typo'd asset
+    # containing < > & would otherwise break entity parsing and the entire
+    # batch would silently 400. Escape per-string.
+    pos = _pos(exchange="bit&get", asset="A<B>C",
+               activity_end_date="2026-06-17")
+    msgs = check_position(pos, TODAY, None, None, cfg)
+    assert msgs
+    joined = "\n".join(msgs)
+    # Exchange is uppercased then escaped: "BIT&get" → "BIT&AMP;GET"
+    assert "BIT&AMP;GET" in joined
+    assert "A&lt;B&gt;C" in joined
+    # Raw special chars must NOT appear unescaped — would 400 Telegram HTML.
+    assert "BIT&GET" not in joined
+    assert "A<B>C" not in joined

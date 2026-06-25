@@ -23,19 +23,23 @@ def send_message(text: str, cfg, pause: float = 1.1) -> bool:
     data = {"chat_id": cfg.telegram_chat_id, "text": text,
             "parse_mode": "HTML", "disable_web_page_preview": "true",
             "message_thread_id": cfg.telegram_topic_arb}
+    ok = False
     try:
         with httpx.Client(timeout=30.0) as c:
             r = c.post(f"{API}/bot{cfg.telegram_bot_token}/sendMessage", data=data)
-        if r.status_code != 200:
-            # M6 hardening will honour 429 retry_after / backoff; for M1's low
-            # volume we just log and treat any non-200 as a best-effort failure.
+        if r.status_code == 200:
+            ok = True
+        else:
             print(f"[telegram] {r.status_code}: {r.text[:200]}", file=sys.stderr)
-            return False
-        time.sleep(pause)          # respect 1 msg/sec/chat
-        return True
     except Exception as e:
         print(f"[telegram] send failed (silent): {e}", file=sys.stderr)
-        return False
+    finally:
+        # Respect 1 msg/sec/chat on BOTH success and failure paths — a 429
+        # burst would otherwise hit the API with zero spacing and just
+        # generate more 429s.
+        if pause:
+            time.sleep(pause)
+    return ok
 
 
 def format_opportunity(o: Opportunity, net, est, flag, tier, cfg) -> str:

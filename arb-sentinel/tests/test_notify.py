@@ -45,3 +45,18 @@ def test_send_fails_closed_when_topic_arb_missing(monkeypatch, cfg):
     cfg.telegram_topic_arb = ""
     assert notify.send_message("hi", cfg) is False
     assert posted["called"] is False, "must not POST to Telegram when topic_arb empty"
+
+
+def test_send_sleeps_on_failure_to_throttle_429_burst(monkeypatch, cfg):
+    # On non-200 (especially 429), the previous shape skipped the sleep and
+    # returned False immediately — back-to-back failures hit Telegram with
+    # no spacing at all. Sleep belongs in `finally`, so failure paths also
+    # observe the per-second rate limit.
+    slept = []
+    monkeypatch.setattr(notify.time, "sleep", lambda s: slept.append(s))
+    def fake_post(self, url, **kw):
+        return httpx.Response(429, text="Too Many Requests",
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    assert notify.send_message("hi", cfg) is False
+    assert slept and slept[0] > 0, "expected throttle sleep on failure path"

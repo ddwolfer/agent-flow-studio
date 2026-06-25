@@ -1,4 +1,4 @@
-import datetime
+import datetime, html
 
 
 def _date(s):
@@ -10,10 +10,14 @@ def _date(s):
 
 def check_position(pos, today, current_apr, depeg_price, cfg):
     """Return triggered exit-alert messages (spec §7) for one active position.
-    current_apr / depeg_price may be None when unavailable. Pure; never raises."""
+    current_apr / depeg_price may be None when unavailable. Pure; never raises.
+    Messages are HTML-escaped because notify.send_message posts with
+    parse_mode=HTML — an unescaped & < > would break entity parsing and
+    Telegram would 400 the whole batch."""
     msgs = []
-    asset = pos.get("asset", "?")
-    label = f"{(pos.get('exchange') or '?').upper()} {asset}"   # always name the exchange
+    asset = html.escape(str(pos.get("asset", "?")))
+    exch = html.escape(str(pos.get("exchange") or "?")).upper()
+    label = f"{exch} {asset}"   # always name the exchange
     end = _date(pos.get("activity_end_date"))
     if end is not None:
         days = (end - today).days
