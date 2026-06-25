@@ -1,9 +1,9 @@
 """Announcement collector.
 
-M3 source: Bitget public announcements API (no key, verified path — the 'annoucements'
-typo is real). Returns raw announcement dicts; the LLM (llm.py) does the structured
-extraction downstream. OKX/Binance announcement HTML scraping is deferred (fragile) —
-TODO M3-proper. Never raises."""
+Bitget + OKX + Binance public announcement feeds (all keyless). Returns raw
+announcement dicts; the LLM (llm.py) does the structured extraction downstream
+for the LLM path, and looks_like_promo() does it deterministically for the
+heads-up path. Never raises."""
 import httpx
 
 BITGET_ANN = "https://api.bitget.com/api/v2/public/annoucements"   # typo path is real
@@ -11,6 +11,15 @@ PROMO_TYPES = ("latest_news", "product_updates")                  # Bitget promo
 
 OKX_ANN = "https://www.okx.com/api/v5/support/announcements"       # official public, keyless
 OKX_PROMO_TYPES = ("latest-events", "announcements-others")        # OKX promo/event types
+
+# Binance public CMS feed. Verified 2026-06-25: POST /article/list/query is 403
+# (WAF), but GET /article/catalog/list/query works without key/UA tricks.
+# Catalog IDs (probed live): 49=Latest News (includes Earn campaigns),
+# 93=Latest Activities (pure promos), 128=HODLer Airdrops / new-coin airdrops.
+BINANCE_ANN = ("https://www.binance.com/bapi/composite/v1/public/cms/"
+               "article/catalog/list/query")
+BINANCE_PROMO_CATALOGS = ("49", "93", "128")
+BINANCE_ARTICLE_URL = "https://www.binance.com/en/support/announcement/{code}"
 
 # Deterministic promo detector for heads-up mode (no LLM). Biased to surface.
 # Chinese keywords cover both Traditional (OKX/Bitget zh_TW) and Simplified
@@ -82,13 +91,50 @@ def fetch_okx(timeout=20.0):
     return anns, errors
 
 
-def fetch_all(cfg=None, language="zh_CN"):
-    """All exchange announcements, each tagged with `_exchange`. Bitget + OKX (both
-    official public APIs). Binance has no official announcements API (only an unofficial
-    bapi the spec warns against) — deferred. Never raises."""
+def fetch_binance(timeout=20.0, page_size=20):
+    """Binance public CMS announcements across promo-relevant catalogs. Normalised
+    to the Bitget shape (annId/annTitle/annDesc/annUrl/annType/cTime). The catalog
+    list endpoint returns titles only — annDesc is empty (LLM/keyword classifies
+    from title). Never raises. `annId` is the article `code` (stable hex hash;
+    `id` field is also stable but `code` matches the public URL slug)."""
     anns, errors = [], []
+    for cat in BINANCE_PROMO_CATALOGS:
+        try:
+            with httpx.Client(timeout=timeout) as c:
+                r = c.get(BINANCE_ANN, params={
+                    "catalogId": cat, "pageNo": 1, "pageSize": page_size,
+                })
+            if r.status_code != 200:
+                errors.append(f"binance ann {cat} HTTP {r.status_code}"); continue
+            j = r.json()
+            if str(j.get("code")) != "000000":
+                errors.append(f"binance ann {cat} code {j.get('code')}: "
+                              f"{j.get('message')}")
+                continue
+            for art in ((j.get("data") or {}).get("articles") or []):
+                code = art.get("code")
+                if not code:
+                    continue
+                anns.append({
+                    "_exchange": "binance",
+                    "annId": code,
+                    "annTitle": art.get("title") or "",
+                    "annDesc": "",
+                    "annUrl": BINANCE_ARTICLE_URL.format(code=code),
+                    "annType": cat,
+                    "cTime": str(art.get("releaseDate") or ""),
+                })
+        except Exception as e:
+            errors.append(f"binance ann {cat} {type(e).__name__}: {e}")
+    return anns, errors
+
+
+def fetch_all(cfg=None, language="zh_CN"):
+    """All exchange announcements, each tagged with `_exchange`: Bitget + OKX +
+    Binance (all keyless public CMS APIs). Never raises."""
     b, e1 = fetch_bitget(language=language)
     for a in b:
         a["_exchange"] = "bitget"
     o, e2 = fetch_okx()
-    return b + o, e1 + e2
+    bn, e3 = fetch_binance()
+    return b + o + bn, e1 + e2 + e3
