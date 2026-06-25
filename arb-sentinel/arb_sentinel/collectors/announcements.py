@@ -13,11 +13,18 @@ OKX_ANN = "https://www.okx.com/api/v5/support/announcements"       # official pu
 OKX_PROMO_TYPES = ("latest-events", "announcements-others")        # OKX promo/event types
 
 # Deterministic promo detector for heads-up mode (no LLM). Biased to surface.
+# Chinese keywords cover both Traditional (OKX/Bitget zh_TW) and Simplified
+# (Bitget zh_CN default) — codepoint-exact `in` matching, so 理財 ≠ 理财.
 PROMO_KEYWORDS = (
     "earn", "cedefi", "launchpool", "launchpad", "jumpstart", "staking", "stake",
     "savings", "airdrop", "bonus", "reward", "campaign", "trade-to-earn",
     "trade to earn", "boost", "apr", "apy", "yield", "dual investment", "giveaway",
-    "理財", "活期", "補貼", "空投", "瓜分", "高息", "雙幣", "賺幣", "質押", "獎勵", "回饋", "活動",
+    # Traditional
+    "理財", "補貼", "雙幣", "賺幣", "質押", "獎勵", "回饋", "活動",
+    # Simplified (Bitget zh_CN returns these)
+    "理财", "补贴", "双币", "赚币", "质押", "奖励", "回馈", "活动",
+    # Script-identical between Trad/Simp — listed once
+    "活期", "空投", "瓜分", "高息",
 )
 
 

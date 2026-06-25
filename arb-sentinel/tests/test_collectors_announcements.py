@@ -42,3 +42,13 @@ def test_looks_like_promo():
     assert announcements.looks_like_promo("Bitget USDGO 限時補貼活動")
     assert not announcements.looks_like_promo("Scheduled Maintenance: Email System")
     assert not announcements.looks_like_promo("OKX to delist FOO perpetual")
+
+
+def test_looks_like_promo_matches_simplified_chinese():
+    # Bitget zh_CN feed returns Simplified titles; PROMO_KEYWORDS used to be
+    # Traditional-only so 44 fetched / 1 flagged. Codepoint-exact `in` matching
+    # means 理財 ≠ 理财, so Simplified variants must be present in PROMO_KEYWORDS.
+    assert announcements.looks_like_promo("Bitget 理财双币赢推出 USDT 活动")
+    assert announcements.looks_like_promo("Bitget USDGO 限时补贴活动")
+    assert announcements.looks_like_promo("赚币奖励上线: 质押 BGB 享高息")
+    assert announcements.looks_like_promo("回馈用户: 现货返佣活动")
