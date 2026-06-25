@@ -56,7 +56,7 @@ def run_rates(cfg, state_path="state/state.json", today=None) -> int:
         flag = engine.time_flag(o, today, cfg.default_horizon_days)
         tier = engine.classify(net, flag, o, cfg)
         if st.should_notify(o, tier, cfg):
-            est = engine.estimate_yield(o, net, cfg)
+            est = engine.estimate_yield(o, net, cfg, today=today)
             if notify.send_message(notify.format_opportunity(o, net, est, flag, tier, cfg), cfg):
                 sent += 1
         st.record(o, tier)
@@ -179,7 +179,7 @@ def _run_announcements_llm(cfg, state_path="state/state.json", today=None, max_l
         flag = engine.time_flag(o, today, cfg.default_horizon_days)
         tier = engine.classify(net, flag, o, cfg)
         if st.should_notify(o, tier, cfg):
-            est = engine.estimate_yield(o, net, cfg)
+            est = engine.estimate_yield(o, net, cfg, today=today)
             if notify.send_message(notify.format_opportunity(o, net, est, flag, tier, cfg), cfg):
                 sent += 1
         st.record(o, tier)

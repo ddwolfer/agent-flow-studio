@@ -1,7 +1,7 @@
 import datetime
 from arb_sentinel.models import Opportunity, ACT_NOW, GOOD, WATCH, LOG_ONLY, \
     OK_TIME, TIGHT, TOO_LATE, NO_DEADLINE
-from arb_sentinel.engine import net_spread, time_flag, estimate_yield, classify
+from arb_sentinel.engine import net_spread, time_flag, estimate_yield, classify  # noqa: F401
 
 def _opp(**kw):
     base = dict(exchange="okx", category="flexible_earn", asset="USDC",
@@ -63,3 +63,39 @@ def test_estimate_yield_chinese_exit_subsidy_waives_exit_slip(cfg):
     est = estimate_yield(o, 0.06, cfg)
     # exit slippage waived -> only entry slippage (15) subtracted: 69.04 - 15 = 54.04
     assert est["est_net"] == 54.04
+
+
+def test_estimate_yield_caps_holding_days_to_end_date(cfg, today):
+    # cfg.default_horizon_days=14, but the promo ends in 5 days. holding_days
+    # must NOT linear-extrapolate 14d of yield — that triples est_net.
+    o = _opp(apr=0.06, end_date=today + datetime.timedelta(days=5), min_hold_days=1)
+    est = estimate_yield(o, 0.06, cfg, today=today)
+    assert est["holding_days"] == 5
+    # 30000 * 0.06 * 5/365 = 24.66 gross — far below the 69.04 a 14-day extrapolation gives
+    assert est["est_gross"] == 24.66
+
+
+def test_estimate_yield_uses_full_horizon_when_no_end_date(cfg):
+    o = _opp(apr=0.06)
+    est = estimate_yield(o, 0.06, cfg)
+    assert est["holding_days"] == 14   # unchanged behaviour
+
+
+def test_estimate_yield_respects_min_hold_days_when_end_date_too_short(cfg, today):
+    # min_hold_days=10 dominates a 5-day end_date (the engine can't show
+    # below the minimum lock — that would understate slippage drag).
+    o = _opp(apr=0.06, end_date=today + datetime.timedelta(days=5), min_hold_days=10)
+    est = estimate_yield(o, 0.06, cfg, today=today)
+    assert est["holding_days"] == 10
+
+
+def test_classify_negative_net_with_directional_risk_is_log_only(cfg):
+    # The directional-risk cap should DOWNGRADE a positive grade, not UPGRADE
+    # a non-grade (negative net) into WATCH.
+    assert classify(-0.01, OK_TIME, _opp(directional_risk=True), cfg) == LOG_ONLY
+
+
+def test_classify_negative_net_with_tight_window_is_log_only(cfg):
+    # Same as above for the TIGHT timing flag — risk cap must not upgrade
+    # a sub-threshold opportunity.
+    assert classify(-0.01, TIGHT, _opp(), cfg) == LOG_ONLY

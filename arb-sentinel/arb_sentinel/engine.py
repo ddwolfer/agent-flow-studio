@@ -21,11 +21,24 @@ def time_flag(o: Opportunity, today: date, default_horizon_days: int = 14) -> st
     return OK_TIME
 
 
-def estimate_yield(o: Opportunity, net: float | None, cfg) -> dict:
-    """Reference-capital projection (spec 5.3). Returns {} if net is None."""
+def estimate_yield(o: Opportunity, net: float | None, cfg, today: date | None = None) -> dict:
+    """Reference-capital projection (spec 5.3). Returns {} if net is None.
+
+    Holding-days cap: when the opportunity has an end_date and that date is
+    closer than cfg.default_horizon_days, the projection must NOT linear-
+    extrapolate the full horizon — a 14-day extrapolation on a 5-day promo
+    overstates est_net by ~3x. min_hold_days still dominates because the
+    engine cannot show a duration shorter than the protocol's own lock."""
     if net is None:
         return {}
-    holding_days = max(o.min_hold_days, cfg.default_horizon_days)
+    horizon = cfg.default_horizon_days
+    if o.end_date is not None:
+        if today is None:
+            today = date.today()
+        days_to_end = (o.end_date - today).days
+        if days_to_end > 0:
+            horizon = min(horizon, days_to_end)
+    holding_days = max(o.min_hold_days, horizon)
     est_gross = cfg.ref_capital * net * holding_days / 365
     entry_slip = cfg.ref_capital * cfg.entry_slippage_assumption
     # subsidy covering exit -> no exit slippage; else symmetric to entry.
@@ -41,18 +54,24 @@ def estimate_yield(o: Opportunity, net: float | None, cfg) -> dict:
 
 
 def classify(net: float | None, flag: str, o: Opportunity, cfg) -> str:
-    """Grade (spec 5.4). Order matters: drop-outs first, then risk caps, then
-    positive grades. directional_risk (dual-invest) and TIGHT timing cap at WATCH
-    — they must never auto-act, even with a high net."""
+    """Grade (spec 5.4). Order matters: drop-outs first, then magnitude-based
+    base grade, then risk CAPS the result downward. directional_risk and TIGHT
+    timing CAP at WATCH — they must never auto-act even with a high net, but
+    they also must never UPGRADE a negative-spread or sub-threshold opportunity
+    out of LOG_ONLY (the previous implementation did exactly that)."""
     time_ok = flag in (OK_TIME, NO_DEADLINE)
     if net is None or flag == TOO_LATE:
         return LOG_ONLY
+    if net >= cfg.threshold_high and time_ok:
+        base = ACT_NOW
+    elif net >= cfg.threshold_mid and time_ok:
+        base = GOOD
+    elif net >= cfg.threshold_mid * 0.5:
+        base = WATCH
+    else:
+        base = LOG_ONLY
+    if base == LOG_ONLY:
+        return LOG_ONLY
     if o.directional_risk or flag == TIGHT:
         return WATCH
-    if net >= cfg.threshold_high and time_ok:
-        return ACT_NOW
-    if net >= cfg.threshold_mid and time_ok:
-        return GOOD
-    if net >= cfg.threshold_mid * 0.5:
-        return WATCH
-    return LOG_ONLY
+    return base
