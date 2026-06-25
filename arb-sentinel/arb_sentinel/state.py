@@ -5,6 +5,23 @@ _TIER_RANK = {"LOG_ONLY": 0, "WATCH": 1, "GOOD": 2, "ACT_NOW": 3}
 
 
 class State:
+    """JSON dedup store for opportunities + announcements.
+
+    Two independent tables:
+      - `seen_opportunities`: tier-graded opportunity dedup (rates path + LLM
+        announcement path). Keyed by `stable_id(opportunity)`. Stores tier,
+        last_apr, last_collected for renotify-delta and tier-upgrade logic.
+      - `seen_announcements`: lightweight announcement dedup (BOTH heads-up
+        AND LLM announcement paths). Keyed by `"{exchange}:{annId}"`. Stores
+        minimal meta (title, is_promo, exchange).
+
+    The heads-up announcement path writes only to `seen_announcements`; the
+    LLM path writes both tables. So `bitget-promotion-*` / `okx-promotion-*` /
+    `binance-promotion-*` entries in `seen_opportunities` freeze in time once
+    `announcement_llm` is flipped to false — by design, not a bug. Dedup
+    continuity across path-switches works via the shared `seen_announcements`
+    table. See run.py::run_announcements docstring."""
+
     def __init__(self, path):
         self.path = pathlib.Path(path)
         self.data = {"seen_opportunities": {}, "active_positions": []}

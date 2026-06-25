@@ -92,7 +92,15 @@ def _parse_date(s):
 
 def run_announcements(cfg, state_path="state/state.json", today=None, max_llm=20, pause=2.5) -> int:
     """Announcement promos. Default = deterministic heads-up (no LLM, zero tokens). Set
-    config `announcement_llm: true` to use Groq for quantitative promo parsing instead."""
+    config `announcement_llm: true` to use Groq for quantitative promo parsing instead.
+
+    State divergence between paths: the heads-up path writes only `seen_announcements`;
+    the LLM path also writes `seen_opportunities` (tier-graded entries). After switching
+    from LLM to heads-up (commit 956056f, 2026-06-22), existing `seen_opportunities`
+    entries with the `bitget-promotion-*` / `okx-promotion-*` / `binance-promotion-*`
+    prefix freeze at their last LLM-run timestamp by design — not a bug. The stale
+    entries remain inert; if you ever flip `announcement_llm` back to true, dedup still
+    works because both paths share `seen_announcements`."""
     if getattr(cfg, "announcement_llm", False):
         return _run_announcements_llm(cfg, state_path, today, max_llm, pause)
     return _run_announcements_headsup(cfg, state_path)
