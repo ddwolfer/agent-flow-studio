@@ -162,8 +162,21 @@ def _run_announcements_llm(cfg, state_path=None, today=None, max_llm=20, pause=2
     now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     sent = 0
     processed = 0                       # bounded LLM calls per run (Groq ~30 req/min)
-    candidates = [a for a in anns
-                  if a.get("annId") and st.is_new_announcement(f"{a.get('_exchange', 'bitget')}:{a['annId']}")]
+    # Dedup BEFORE the LLM loop: an article in multiple Binance catalogs
+    # (e.g. a HODLer Airdrop indexed in both 128 and 49) would otherwise
+    # burn one Groq call per duplicate. (exch, annId) is the canonical key
+    # also used by seen_announcements downstream, so this dedup is safe.
+    seen_keys = set()
+    candidates = []
+    for a in anns:
+        ann_id = a.get("annId")
+        if not ann_id:
+            continue
+        key = f"{a.get('_exchange', 'bitget')}:{ann_id}"
+        if key in seen_keys or not st.is_new_announcement(key):
+            continue
+        seen_keys.add(key)
+        candidates.append(a)
     for idx, a in enumerate(candidates):
         exch = a.get("_exchange", "bitget")
         ann_id = a.get("annId")
@@ -182,7 +195,10 @@ def _run_announcements_llm(cfg, state_path=None, today=None, max_llm=20, pause=2
         if info == llm.MODEL_DECOMMISSIONED:
             print("[ann] groq model decommissioned — falling back to heads-up "
                   "and stopping LLM path for this run", file=sys.stderr)
-            return _run_announcements_headsup(cfg, state_path)
+            # Carry over any Telegram alerts we already sent in this loop;
+            # otherwise the launchd journal undercounts when decommission
+            # fires after the first few successful extractions.
+            return sent + _run_announcements_headsup(cfg, state_path)
         processed += 1
         # Sleep AFTER the call, only when more work remains and we haven't
         # already used the budget — saves ~pause × 2 wasted seconds per run.

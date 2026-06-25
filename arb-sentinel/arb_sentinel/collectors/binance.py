@@ -61,7 +61,7 @@ def collect_rates(cfg) -> tuple[list[Opportunity], list[str]]:
         if env_err:
             errors.append(f"binance {asset} {env_err}"); continue
         rows = data.get("rows") if isinstance(data, dict) else None
-        rows = rows or []
+        rows = [x for x in (rows or []) if isinstance(x, dict)]
         row = next((x for x in rows if x.get("asset") == asset and x.get("canPurchase")), None)
         if row is None:
             row = next((x for x in rows if x.get("asset") == asset), None)

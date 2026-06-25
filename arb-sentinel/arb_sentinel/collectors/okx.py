@@ -35,7 +35,8 @@ def collect_rates(cfg) -> tuple[list[Opportunity], list[str]]:
     env_err = _okx_envelope_error(data, "rates")
     if env_err:
         return [], [env_err]
-    by_ccy = {row.get("ccy"): row for row in (data.get("data") or [])}
+    by_ccy = {row.get("ccy"): row for row in (data.get("data") or [])
+              if isinstance(row, dict)}
     for asset in cfg.assets:
         row = by_ccy.get(asset)
         if not row:
@@ -88,7 +89,11 @@ def collect_borrow(cfg) -> tuple[dict, list[str]]:
         return {}, [env_err]
     out = {}
     for row in (data.get("data") or []):
+        if not isinstance(row, dict):
+            continue
         for b in (row.get("basic") or []):
+            if not isinstance(b, dict):
+                continue
             ccy = b.get("ccy")
             if ccy in cfg.assets:
                 try:

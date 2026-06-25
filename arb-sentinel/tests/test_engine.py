@@ -99,3 +99,14 @@ def test_classify_negative_net_with_tight_window_is_log_only(cfg):
     # Same as above for the TIGHT timing flag — risk cap must not upgrade
     # a sub-threshold opportunity.
     assert classify(-0.01, TIGHT, _opp(), cfg) == LOG_ONLY
+
+
+def test_estimate_yield_end_date_is_today_uses_one_day_not_full_horizon(cfg, today):
+    # Boundary: end_date == today used to give days_to_end == 0, which the
+    # `> 0` guard skipped — so the cap fell back to the full 14-day horizon
+    # and re-introduced the 3x est_net overstatement on a same-day expiry.
+    o = _opp(apr=0.06, end_date=today, min_hold_days=1)
+    est = estimate_yield(o, 0.06, cfg, today=today)
+    # holding_days clamps to max(min_hold_days=1, max(1, days_to_end=0)) = 1
+    assert est["holding_days"] == 1
+    assert est["est_gross"] < 10        # 30000 * 0.06 * 1/365 ≈ 4.93, NOT 69.04

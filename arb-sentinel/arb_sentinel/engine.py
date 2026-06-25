@@ -36,8 +36,12 @@ def estimate_yield(o: Opportunity, net: float | None, cfg, today: date | None = 
         if today is None:
             today = date.today()
         days_to_end = (o.end_date - today).days
-        if days_to_end > 0:
-            horizon = min(horizon, days_to_end)
+        # `days_to_end >= 0` includes the "ends today" case. Without the >=,
+        # an end_date == today fell through to the full horizon and brought
+        # the 3x est_net overstatement back (the bug the cap was added to
+        # prevent). At minimum project 1 day so we never display 0-day yield.
+        if days_to_end >= 0:
+            horizon = min(horizon, max(1, days_to_end))
     holding_days = max(o.min_hold_days, horizon)
     est_gross = cfg.ref_capital * net * holding_days / 365
     entry_slip = cfg.ref_capital * cfg.entry_slippage_assumption

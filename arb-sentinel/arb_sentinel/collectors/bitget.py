@@ -1,6 +1,7 @@
 import base64, datetime, hashlib, hmac, time
 import httpx
 from ..models import Opportunity
+from . import base as _base
 
 BASE = "https://api.bitget.com"
 PRODUCT = "/api/v2/earn/savings/product"
@@ -43,25 +44,27 @@ def _signed_get(path, query, key, secret, passphrase, timeout=20.0):
 def _spot_usd(asset, timeout=10.0):
     """Best-effort coin-to-USD spot price for converting a USD ref_capital into
     coin units before tier-band matching. Stables return 1.0 without a network
-    call. Non-stables hit Bitget's keyless spot ticker (BTCUSDT etc.). Returns
-    a positive float on success, None on any failure (collector contract)."""
+    call. Non-stables hit Bitget's keyless spot ticker (BTCUSDT etc.) via
+    base.get_json (so transient 5xx / 429 / TransportError go through the
+    standard retry-with-backoff envelope rather than failing on the first
+    blip). Returns a positive float on success, None on any failure."""
     if asset.upper() in _STABLECOINS:
         return 1.0
-    try:
-        with httpx.Client(timeout=timeout) as c:
-            r = c.get(BASE + SPOT_TICKER, params={"symbol": f"{asset.upper()}USDT"})
-        if r.status_code != 200:
-            return None
-        j = r.json()
-        if str(j.get("code")) != "00000":
-            return None
-        rows = j.get("data") or []
-        if not rows:
-            return None
-        px = float(rows[0].get("lastPr") or 0)
-        return px if px > 0 else None
-    except Exception:
+    data, err = _base.get_json(BASE + SPOT_TICKER,
+                               params={"symbol": f"{asset.upper()}USDT"},
+                               timeout=timeout)
+    if err or not isinstance(data, dict):
         return None
+    if str(data.get("code")) != "00000":
+        return None
+    rows = data.get("data") or []
+    if not rows or not isinstance(rows[0], dict):
+        return None
+    try:
+        px = float(rows[0].get("lastPr") or 0)
+    except (ValueError, TypeError):
+        return None
+    return px if px > 0 else None
 
 
 def _applicable_apy(apylist, ref_capital, spot_usd=None):
