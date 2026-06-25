@@ -14,7 +14,11 @@ _COLLECTORS = {"okx": okx, "binance": binance, "bitget": bitget}
 
 
 def _today():
-    return datetime.date.today()
+    """Today as a UTC date. Announcement end_dates and exchange `cTime` /
+    `pTime` are all UTC; mixing with the host-local `date.today()` causes a
+    1-day boundary flip near UTC midnight for TPE/JST hosts (TOO_LATE vs
+    TIGHT vs OK_TIME swap for the same opportunity)."""
+    return datetime.datetime.now(datetime.timezone.utc).date()
 
 
 def collect_all_rates(cfg):

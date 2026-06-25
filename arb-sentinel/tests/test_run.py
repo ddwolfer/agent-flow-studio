@@ -35,3 +35,29 @@ def test_run_digest_consults_borrow_in_borrow_mode(monkeypatch, cfg):
     monkeypatch.setattr(run_mod.notify, "send_message", lambda text, c, **kw: True)
     run_mod.run_digest(cfg2)
     assert called["borrow"] is True   # digest now subtracts borrow in borrow-mode (was a no-op bug)
+
+
+def test_today_returns_utc_date_not_local(monkeypatch):
+    # _today() used to call date.today() which is LOCAL date. Mixing it with
+    # UTC-parsed end_date (e.g. announcement Z timestamps) causes a 1-day
+    # boundary error near midnight UTC for TPE/JST hosts — TOO_LATE vs TIGHT
+    # vs OK_TIME flips for the same opportunity. Force a divergence between
+    # local-now and utc-now and assert _today() picks the UTC one.
+    local_date = datetime.date(2026, 6, 26)     # imagine local is "tomorrow"
+    utc_date = datetime.date(2026, 6, 25)        # but UTC is still "today"
+    class _StubDate(datetime.date):
+        @classmethod
+        def today(cls):
+            return local_date
+    class _StubDateTime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            # Behave as if local is 26 06:00 (so date()=26) but UTC is 25 22:00
+            if tz is None:
+                return datetime.datetime(2026, 6, 26, 6, 0, 0)
+            return datetime.datetime(2026, 6, 25, 22, 0, 0, tzinfo=tz)
+    import types
+    fake_dt = types.SimpleNamespace(
+        date=_StubDate, datetime=_StubDateTime, timezone=datetime.timezone)
+    monkeypatch.setattr(run_mod, "datetime", fake_dt)
+    assert run_mod._today() == utc_date           # NOT local_date
