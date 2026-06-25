@@ -1,8 +1,14 @@
-import datetime, sys, time
+import datetime, os, sys, time
 from .collectors import okx, binance, bitget, announcements
 from . import engine, notify, llm, exits
 from .models import Opportunity
 from .state import State
+
+# Sanity cap on apr-from-LLM: belt-and-braces against prompt-injection that
+# escapes the delimiter guard. 200% APR is an honest upper bound for any real
+# crypto promo; anything past it gets clamped to None so engine.classify can't
+# auto-grade ACT_NOW on a hallucinated/manipulated number.
+_LLM_APR_SANITY_CAP = 2.0   # 200%
 
 _COLLECTORS = {"okx": okx, "binance": binance, "bitget": bitget}
 
@@ -100,9 +106,17 @@ def run_announcements(cfg, state_path=None, today=None, max_llm=20, pause=2.5) -
     entries with the `bitget-promotion-*` / `okx-promotion-*` / `binance-promotion-*`
     prefix freeze at their last LLM-run timestamp by design — not a bug. The stale
     entries remain inert; if you ever flip `announcement_llm` back to true, dedup still
-    works because both paths share `seen_announcements`."""
+    works because both paths share `seen_announcements`.
+
+    Resilience: if announcement_llm is true but GROQ_API_KEY is empty, falls
+    through to the heads-up path instead of burning per-run sleep budget on
+    silent no-op LLM calls."""
     if getattr(cfg, "announcement_llm", False):
-        return _run_announcements_llm(cfg, state_path, today, max_llm, pause)
+        if not (getattr(cfg, "groq_api_key", "") or os.environ.get("GROQ_API_KEY", "")):
+            print("[ann] announcement_llm=true but GROQ_API_KEY missing — "
+                  "falling back to heads-up path", file=sys.stderr)
+        else:
+            return _run_announcements_llm(cfg, state_path, today, max_llm, pause)
     return _run_announcements_headsup(cfg, state_path)
 
 
@@ -144,29 +158,51 @@ def _run_announcements_llm(cfg, state_path=None, today=None, max_llm=20, pause=2
     now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     sent = 0
     processed = 0                       # bounded LLM calls per run (Groq ~30 req/min)
-    for a in anns:
+    candidates = [a for a in anns
+                  if a.get("annId") and st.is_new_announcement(f"{a.get('_exchange', 'bitget')}:{a['annId']}")]
+    for idx, a in enumerate(candidates):
         exch = a.get("_exchange", "bitget")
         ann_id = a.get("annId")
         seen_key = f"{exch}:{ann_id}"
-        if not ann_id or not st.is_new_announcement(seen_key):
-            continue
         if processed >= max_llm:
             break                       # leave the rest for the next run (NOT marked seen)
         info = llm.extract_promo(a.get("annTitle", ""), a.get("annDesc", ""),
                                  api_key=getattr(cfg, "groq_api_key", "") or None)
+        # Distinguish "transient/parse failure" (None — retry next run, no sleep,
+        # no budget burn) from "rate-limited" / "model decommissioned" sentinels
+        # (break the budget loop — every subsequent call is a guaranteed waste).
+        if info == llm.RATE_LIMITED:
+            print("[ann] groq 429 — breaking budget loop, retry next run",
+                  file=sys.stderr)
+            break
+        if info == llm.MODEL_DECOMMISSIONED:
+            print("[ann] groq model decommissioned — falling back to heads-up "
+                  "and stopping LLM path for this run", file=sys.stderr)
+            return _run_announcements_headsup(cfg, state_path)
         processed += 1
-        if pause:
+        # Sleep AFTER the call, only when more work remains and we haven't
+        # already used the budget — saves ~pause × 2 wasted seconds per run.
+        more_work_remaining = (idx < len(candidates) - 1) and (processed < max_llm)
+        if pause and more_work_remaining and info is not None:
             time.sleep(pause)           # throttle under Groq's rate limit
         if info is None:
-            continue                    # LLM failed (e.g. 429) -> DON'T mark seen; retry next run
+            continue                    # transient failure -> DON'T mark seen; retry next run
         st.mark_announcement(seen_key, {"exchange": exch, "title": a.get("annTitle"),
                                         "is_promo": bool(info.get("is_promotion"))})
         if not info.get("is_promotion"):
             continue
+        # Sanity cap apr in case prompt-injection escapes llm.py's delimiter
+        # guard. Anything > 200% is implausible for a real crypto promo;
+        # clamp to None so engine.classify can't auto-grade ACT_NOW on it.
+        apr_raw = info.get("apr")
+        apr = apr_raw if (apr_raw is None or 0 <= apr_raw <= _LLM_APR_SANITY_CAP) else None
+        if apr_raw is not None and apr is None:
+            print(f"[ann] llm returned implausible apr {apr_raw} on '{a.get('annTitle')!r}'"
+                  f" — clamped to None", file=sys.stderr)
         o = Opportunity(
             exchange=exch, category="promotion",
             asset=(info.get("entry_asset") or "?"),
-            apr=info.get("apr"), apr_source="announcement", apr_is_promotional=True,
+            apr=apr, apr_source="announcement", apr_is_promotional=True,
             min_hold_days=int(info.get("min_hold_days") or 0),
             start_date=_parse_date(info.get("start_date")),
             end_date=_parse_date(info.get("end_date")),
