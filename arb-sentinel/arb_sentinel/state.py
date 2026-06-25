@@ -1,4 +1,4 @@
-import datetime, json, os, pathlib, tempfile
+import datetime, json, os, pathlib, sys, tempfile
 from .models import Opportunity, stable_id
 
 _TIER_RANK = {"LOG_ONLY": 0, "WATCH": 1, "GOOD": 2, "ACT_NOW": 3}
@@ -89,23 +89,33 @@ class State:
         self._save()
 
     def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic write: stage in a sibling temp file, fsync, then os.replace.
-        # Path.write_text used to leave a half-written state.json on kill,
-        # which __init__ then silently reset → every alert re-broadcast.
+        """Atomic, best-effort persist. NEVER raises out — every caller is
+        on a never-raise path (run_rates / run_depeg / mark_announcement /
+        record) and an OSError here (ENOSPC, read-only mount, mid-write
+        kill of os.replace) would otherwise propagate up and break the
+        launchd job. On failure: clean up the staged temp file, log to
+        stderr, leave the previous on-disk state untouched (still readable
+        on next __init__). Atomicity guarantee survives because we never
+        partially overwrite the target."""
         payload = json.dumps(self.data, ensure_ascii=False, indent=2)
-        fd, tmp = tempfile.mkstemp(
-            prefix=f"{self.path.name}.", suffix=".tmp", dir=str(self.path.parent))
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            # Atomic write: stage in a sibling temp file, fsync, then os.replace.
+            fd, tmp = tempfile.mkstemp(
+                prefix=f"{self.path.name}.", suffix=".tmp",
+                dir=str(self.path.parent))
+        except OSError as e:
+            print(f"[state] save staging failed (silent): {e}", file=sys.stderr)
+            return
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(payload)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, self.path)
-        except Exception:
-            # Best-effort cleanup of the staged temp file; never raise out.
+        except Exception as e:
+            print(f"[state] save failed (silent): {e}", file=sys.stderr)
             try:
                 os.unlink(tmp)
             except OSError:
                 pass
-            raise

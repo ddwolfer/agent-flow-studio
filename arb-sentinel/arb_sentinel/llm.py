@@ -8,7 +8,7 @@ Return contract: dict on success, None on parse/transport failure, or one of the
 string sentinels {"rate_limited", "model_decommissioned"} so the caller can
 distinguish error classes that should break the budget loop instead of being
 treated as transient. Never raises."""
-import json, os, sys
+import json, os, re, sys
 import httpx
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -123,4 +123,33 @@ def extract_promo(title, body, api_key=None, model=None, timeout=40.0):
         obj["apr"] = (float(apr_pct) / 100.0) if apr_pct is not None else None
     except (ValueError, TypeError):
         obj["apr"] = None
+    # min_hold_days: JSON mode constrains the SHAPE but not the contents — the
+    # model occasionally emits "30天" / "thirty" / null / numeric strings.
+    # run.py downstream does int(...), which would ValueError out and break the
+    # _run_announcements_llm never-raise contract. Normalise here: digit
+    # extraction first (so "30天" recovers as 30 instead of 0), int cast next,
+    # 0 fallback last.
+    obj["min_hold_days"] = _coerce_int(obj.get("min_hold_days"), default=0)
     return obj
+
+
+def _coerce_int(value, default: int = 0) -> int:
+    """Best-effort int coercion: tolerates ints, floats, numeric strings, and
+    embedded digits in strings like '30天'. Returns `default` for None and
+    anything else."""
+    if value is None:
+        return default
+    if isinstance(value, bool):              # bool is an int subclass; reject
+        return default
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except (ValueError, OverflowError):
+            return default
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            m = re.search(r"-?\d+", value)
+            return int(m.group(0)) if m else default
+    return default

@@ -81,6 +81,30 @@ def test_extract_promo_honours_groq_model_env(monkeypatch):
     assert captured["model"] == "moonshot-test-model"
 
 
+def test_extract_promo_normalises_non_numeric_min_hold_days(monkeypatch):
+    # LLM JSON-mode constrains the SHAPE but not the contents — a malicious
+    # or schema-drifted response can put "30天" / "thirty" / null where an
+    # int was expected. run.py does int(info.get("min_hold_days") or 0),
+    # which would raise ValueError on a non-numeric string and break the
+    # _run_announcements_llm never-raise contract.
+    reply = ('{"is_promotion": true, "apr_percent": 12, '
+             '"min_hold_days": "30天", "entry_asset": "USDT"}')
+    monkeypatch.setattr(httpx.Client, "post", _groq_reply(reply))
+    out = llm.extract_promo("t", "b", api_key="k")
+    # Normalised to int — either parsed digits or 0 fallback. NOT the raw string.
+    assert isinstance(out.get("min_hold_days"), int)
+
+
+def test_extract_promo_extracts_digits_from_min_hold_days_string(monkeypatch):
+    # "30天" should be recovered as 30 if at all possible — the user-visible
+    # promo "鎖倉 30 天" loses meaning if we just fall back to 0.
+    reply = ('{"is_promotion": true, "apr_percent": 12, '
+             '"min_hold_days": "30天"}')
+    monkeypatch.setattr(httpx.Client, "post", _groq_reply(reply))
+    out = llm.extract_promo("t", "b", api_key="k")
+    assert out["min_hold_days"] == 30
+
+
 def test_extract_promo_wraps_user_data_in_delimiters(monkeypatch):
     # Prompt-injection defense: title/body must be wrapped with delimiters and
     # an instruction telling the model to treat them as opaque data, not

@@ -164,21 +164,23 @@ def fetch_binance(timeout=20.0, page_size=20):
 
 
 def fetch_all(cfg=None, language="zh_CN"):
-    """All exchange announcements, each tagged with `_exchange`. Honours
-    `cfg.exchanges` if present (only fetches the listed exchanges); defaults
-    to all three (bitget + okx + binance) when cfg is None or missing the
-    attribute. Never raises."""
-    enabled = set(getattr(cfg, "exchanges", None) or ("bitget", "okx", "binance"))
+    """All exchange announcements, each tagged with `_exchange`. ALWAYS
+    fetches bitget + okx + binance — every feed is keyless, so there is no
+    cost / authentication reason to subset them.
+
+    Deliberately does NOT read `cfg.exchanges` even when cfg is provided:
+    that field controls signed RATE collector selection (only the exchanges
+    you hold API keys for), which has nothing to do with promo heads-up
+    coverage. An operator running `exchanges: [okx]` because OKX is their
+    only API key should still receive Binance/Bitget Earn-promo heads-up
+    automatically. Never raises."""
     anns, errors = [], []
-    if "bitget" in enabled:
-        b, e1 = fetch_bitget(language=language)
-        for a in b:
-            a["_exchange"] = "bitget"
-        anns.extend(b); errors.extend(e1)
-    if "okx" in enabled:
-        o, e2 = fetch_okx()
-        anns.extend(o); errors.extend(e2)
-    if "binance" in enabled:
-        bn, e3 = fetch_binance()
-        anns.extend(bn); errors.extend(e3)
+    b, e1 = fetch_bitget(language=language)
+    for a in b:
+        a["_exchange"] = "bitget"
+    anns.extend(b); errors.extend(e1)
+    o, e2 = fetch_okx()
+    anns.extend(o); errors.extend(e2)
+    bn, e3 = fetch_binance()
+    anns.extend(bn); errors.extend(e3)
     return anns, errors

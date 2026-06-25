@@ -64,6 +64,25 @@ def test_corrupt_state_is_backed_up_before_reset(tmp_path, cfg):
     assert st.should_notify(_opp(0.06), ACT_NOW, cfg) is True
 
 
+def test_save_never_raises_on_disk_failure(tmp_path, cfg, monkeypatch):
+    # _save() used to re-raise on the cleanup-temp-file path, which would
+    # propagate out of mark_announcement / record / mark_depeg and break
+    # the "Never raises out" contract documented on the run.py entry
+    # points (_run_announcements_headsup / _run_announcements_llm /
+    # run_rates / run_depeg).
+    # Simulate ENOSPC: os.replace fails.
+    import os
+    p = tmp_path / "state.json"
+    st = State(p)
+    def fail_replace(*a, **kw):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(os, "replace", fail_replace)
+    # mark_announcement triggers _save indirectly; it must NOT raise.
+    st.mark_announcement("okx:abc", {"title": "x"})
+    # On disk: the original file should still be intact (or absent if first
+    # save) — atomicity preserved AND never-raise honoured.
+
+
 def test_default_state_path_is_absolute(tmp_path, monkeypatch):
     # Calling State() with no path should default to an absolute path under
     # the package's parent dir, NOT cwd-relative "state/state.json". Otherwise

@@ -132,29 +132,24 @@ def test_fetch_binance_paginates_until_short_page(monkeypatch):
     assert len(cat49) == 5     # 2 + 2 + 1, then stop
 
 
-def test_fetch_all_respects_cfg_exchanges(monkeypatch):
-    # cfg.exchanges = ["okx"] means the user has explicitly turned off bitget
-    # and binance — fetch_all must not silently call them.
+def test_fetch_all_ignores_cfg_exchanges(monkeypatch):
+    # cfg.exchanges controls RATE collector selection (signed API keys).
+    # Promo announcements are keyless and semantically independent — an
+    # operator running `exchanges: [okx]` (only has OKX key) should still
+    # see Bitget/Binance Earn-promo heads-up. fetch_all must NOT silently
+    # filter.
     calls = []
-    def fake_bitget(*a, **kw):
-        calls.append("bitget"); return ([], [])
-    def fake_okx(*a, **kw):
-        calls.append("okx"); return ([], [])
-    def fake_binance(*a, **kw):
-        calls.append("binance"); return ([], [])
-    monkeypatch.setattr(announcements, "fetch_bitget", fake_bitget)
-    monkeypatch.setattr(announcements, "fetch_okx", fake_okx)
-    monkeypatch.setattr(announcements, "fetch_binance", fake_binance)
+    monkeypatch.setattr(announcements, "fetch_bitget",
+                        lambda *a, **kw: (calls.append("bitget") or [], []))
+    monkeypatch.setattr(announcements, "fetch_okx",
+                        lambda *a, **kw: (calls.append("okx") or [], []))
+    monkeypatch.setattr(announcements, "fetch_binance",
+                        lambda *a, **kw: (calls.append("binance") or [], []))
 
     import types
     cfg_only_okx = types.SimpleNamespace(exchanges=["okx"])
     announcements.fetch_all(cfg_only_okx)
-    assert calls == ["okx"]
-
-    calls.clear()
-    cfg_only_binance = types.SimpleNamespace(exchanges=["binance"])
-    announcements.fetch_all(cfg_only_binance)
-    assert calls == ["binance"]
+    assert set(calls) == {"bitget", "okx", "binance"}
 
 
 def test_fetch_all_defaults_to_all_three_when_cfg_missing(monkeypatch):
