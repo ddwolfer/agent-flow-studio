@@ -17,6 +17,19 @@ class Settings:
 
 
 def _load_dotenv(path: pathlib.Path) -> None:
+    """Minimal .env loader that survives three real-world copy-paste hazards
+    without pulling in python-dotenv:
+
+    1. `export FOO=bar` — strip the leading "export " so the key becomes FOO,
+       not "export FOO".
+    2. `TOKEN="abc"` / `TOKEN='abc'` — strip matched surrounding quotes so the
+       token doesn't carry the quotation marks (would 401 against Telegram).
+    3. Empty env var shadowing — `os.environ.setdefault` is a no-op when the
+       variable EXISTS, including empty string. An empty TELEGRAM_BOT_TOKEN
+       in ~/.zshrc would otherwise silently kill notify even with a valid
+       .env. Override only when the existing value is empty.
+
+    Real (non-empty) shell env always wins over .env."""
     if not path.exists():
         return
     for line in path.read_text("utf-8").splitlines():
@@ -24,7 +37,16 @@ def _load_dotenv(path: pathlib.Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, _, v = line.partition("=")
-        os.environ.setdefault(k.strip(), v.strip())
+        k = k.strip()
+        if k.startswith("export "):
+            k = k[len("export "):].strip()
+        v = v.strip()
+        # Strip matched surrounding quotes; preserve quotes that don't match.
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            v = v[1:-1]
+        # setdefault would no-op on an empty-string env; override that case.
+        if not os.environ.get(k):
+            os.environ[k] = v
 
 
 def load_settings(config_path: pathlib.Path | None = None) -> Settings:
