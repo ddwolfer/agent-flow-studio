@@ -7,7 +7,18 @@ heads-up path. Never raises."""
 import httpx
 
 BITGET_ANN = "https://api.bitget.com/api/v2/public/annoucements"   # typo path is real
-PROMO_TYPES = ("latest_news", "product_updates")                  # Bitget promo types
+# Bitget annTypes — live-probed 2026-06-27. Bitget pushed Earn-style content
+# into more than just latest_news + product_updates; `coin_listings` carries
+# launch promos / airdrops for new tokens and stock-token products, and
+# `trading_competitions_promotions` is the documented promo-only channel
+# (currently sparse but emits all real trading-contest activity). Skipping
+# `maintenance_system_updates` because it's purely operational.
+PROMO_TYPES = (
+    "latest_news",
+    "product_updates",
+    "coin_listings",
+    "trading_competitions_promotions",
+)
 
 OKX_ANN = "https://www.okx.com/api/v5/support/announcements"       # official public, keyless
 OKX_PROMO_TYPES = ("latest-events", "announcements-others")        # OKX promo/event types
@@ -44,13 +55,16 @@ PROMO_KEYWORDS = (
 # Categories that are 100% promo by definition — every item qualifies, no
 # keyword check needed. Catches promos with off-keyword titles like
 # "Binance Wallet x Project" (catalog 93) or "Join the Q3 Beautiful Game"
-# (OKX latest-events). Bitget's annType values are not in this set because
-# `latest_news` / `product_updates` both mix promos with listing/maintenance
-# notices — they still need the keyword filter.
+# (OKX latest-events). Bitget's `latest_news` / `product_updates` /
+# `coin_listings` are NOT in this set — they mix promos with listing /
+# maintenance / 美股 / 合約調整 notices — so they still need the keyword
+# filter. `trading_competitions_promotions` IS pure by name and by Bitget's
+# own categorisation.
 _PURE_PROMO_ANN_TYPES = frozenset({
-    "93",                # Binance Latest Activities
-    "128",               # Binance HODLer Airdrops
-    "latest-events",     # OKX promo/event tier
+    "93",                                    # Binance Latest Activities
+    "128",                                   # Binance HODLer Airdrops
+    "latest-events",                         # OKX promo/event tier
+    "trading_competitions_promotions",       # Bitget contest/promo channel
 })
 
 

@@ -199,6 +199,35 @@ def test_looks_like_promo():
     assert not announcements.looks_like_promo("OKX to delist FOO perpetual")
 
 
+def test_fetch_bitget_walks_all_four_promo_annTypes(monkeypatch):
+    # Default PROMO_TYPES used to be only (latest_news, product_updates),
+    # but live audit (2026-06-27) showed Bitget pushed Earn content into
+    # coin_listings (新幣 launch promo) and trading_competitions_promotions
+    # (專屬 promo 通道). Both must be walked.
+    requested = []
+    def fake_get(self, url, params=None, **kw):
+        requested.append(params.get("annType"))
+        return httpx.Response(200, json={"code": "00000", "data": [
+            {"annId": f"id-{params.get('annType')}",
+             "annTitle": "x", "annDesc": "", "annUrl": "u",
+             "annType": params.get("annType"), "cTime": "1"}]},
+            request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    anns, errors = announcements.fetch_bitget()
+    assert errors == []
+    assert set(requested) >= {"latest_news", "product_updates",
+                              "coin_listings", "trading_competitions_promotions"}
+
+
+def test_looks_like_promo_treats_trading_competitions_promotions_as_pure():
+    # trading_competitions_promotions is the documented promo-only channel —
+    # every item qualifies regardless of keyword hit.
+    assert announcements.looks_like_promo("BG Token 持倉量大賽",
+                                          ann_type="trading_competitions_promotions")
+    assert announcements.looks_like_promo("Bitget 合約交易賽 - 100,000 USDT",
+                                          ann_type="trading_competitions_promotions")
+
+
 def test_looks_like_promo_uses_ann_type_pure_promo_categories():
     # Binance catalog 93 (Latest Activities) and OKX latest-events are PURE
     # promo categories — every item is promotional regardless of title. The
