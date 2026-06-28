@@ -1,5 +1,5 @@
 import datetime, os, sys, time
-from .collectors import okx, binance, bitget, announcements
+from .collectors import okx, binance, bitget, announcements, bitget_events
 from . import engine, notify, llm, exits
 from .models import Opportunity
 from .state import State
@@ -145,9 +145,40 @@ def _run_announcements_headsup(cfg, state_path=None, limit=20) -> int:
         st.mark_announcement(seen_key, {"exchange": exch, "title": title, "is_promo": is_promo})
         if is_promo:
             fresh.append((exch, title, a.get("annUrl")))
-    if not fresh:
+    sent = 0
+    if fresh:
+        sent += 1 if notify.send_message(notify.format_headsup(fresh, limit=limit), cfg) else 0
+    sent += _run_bitget_events_check(cfg, st)
+    return sent
+
+
+def _run_bitget_events_check(cfg, st) -> int:
+    """Scrape Bitget PoolX + Launchpool SSR HTML for project counts and fire
+    a heads-up when the total (active + upcoming) increases since last check.
+    Bitget's public announcement API does NOT carry these — they're UI-only
+    products (verified 2026-06-28: no endpoint in official docs or community
+    wrappers, browser-class JS needed for XHR). Per-page counts persisted in
+    `state["bitget_events_seen"]`. Never raises out."""
+    items, errors = bitget_events.fetch_event_status()
+    for err in errors:
+        print(f"[bitget-events] {err}", file=sys.stderr)
+    if not items:
         return 0
-    return 1 if notify.send_message(notify.format_headsup(fresh, limit=limit), cfg) else 0
+    seen = st.data.setdefault("bitget_events_seen", {})
+    rising = []
+    for it in items:
+        key = it["page"]
+        prev = seen.get(key, {"active": 0, "upcoming": 0})
+        prev_total = int(prev.get("active", 0)) + int(prev.get("upcoming", 0))
+        cur_total = it["active"] + it["upcoming"]
+        if cur_total > prev_total:
+            rising.append((it["page"], it["url"], it["active"],
+                           it["upcoming"], prev_total))
+        seen[key] = {"active": it["active"], "upcoming": it["upcoming"]}
+    st._save()
+    if not rising:
+        return 0
+    return 1 if notify.send_message(notify.format_bitget_events(rising), cfg) else 0
 
 
 def _run_announcements_llm(cfg, state_path=None, today=None, max_llm=20, pause=2.5) -> int:

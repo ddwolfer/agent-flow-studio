@@ -81,6 +81,24 @@ def format_headsup(items, limit=20) -> str:
     return "\n".join(lines)
 
 
+def format_bitget_events(rising: list) -> str:
+    """rising = [(page, url, active, upcoming, prev_total)]. Heads-up that
+    Bitget PoolX / Launchpool has new pools relative to last poll. The pool
+    list itself is JS-rendered so we can't name the tokens — direct user
+    back to the page. Every line names the exchange (Bitget) explicitly."""
+    e = lambda s: html.escape(str(s))
+    lines = [f"🟡 <b>套利哨兵 | BITGET 活動頁更新</b>（{len(rising)} 個頁面）", ""]
+    for page, url, active, upcoming, prev_total in rising:
+        cur_total = active + upcoming
+        delta = cur_total - prev_total
+        lines.append(
+            f"• <b>BITGET</b> | {e(page)} 新增 {delta} 個"
+            f"(目前進行中 {active} / 即將開始 {upcoming},上次 {prev_total})")
+        lines.append(f"  🔗 {e(url)}")
+    lines.append("\n⚠️ 項目名稱與獎勵需進頁面確認(JS 渲染,本機無法抓)")
+    return "\n".join(lines)
+
+
 def format_digest(graded: list, cfg) -> str:
     """graded = [(Opportunity, net, tier)]. Compact baseline summary, grouped by exchange."""
     lines = [f"🟡 <b>套利哨兵 | 利率基線</b> ({len(graded)} 項)"]

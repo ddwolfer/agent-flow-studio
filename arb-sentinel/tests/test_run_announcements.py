@@ -4,6 +4,7 @@ from arb_sentinel import run as run_mod
 
 def test_run_announcements_alerts_new_promo_then_dedups(monkeypatch, cfg, tmp_path):
     cfg.announcement_llm = True   # this test exercises the quantitative LLM path
+    cfg.groq_api_key = "fake-key-for-test"   # required since Slice 7 fast-fail on missing key
     ann = {"_exchange": "bitget", "annId": "A1", "annTitle": "USDGO 補貼活動", "annDesc": "...", "annUrl": "http://x"}
     monkeypatch.setattr(run_mod.announcements, "fetch_all", lambda *a, **kw: ([ann], []))
     monkeypatch.setattr(run_mod.llm, "extract_promo", lambda title, body, **kw: {
@@ -28,6 +29,7 @@ def test_run_announcements_alerts_new_promo_then_dedups(monkeypatch, cfg, tmp_pa
 
 def test_run_announcements_skips_non_promo(monkeypatch, cfg, tmp_path):
     cfg.announcement_llm = True
+    cfg.groq_api_key = "fake-key-for-test"
     ann = {"_exchange": "bitget", "annId": "B1", "annTitle": "系統維護公告", "annDesc": "...", "annUrl": "u"}
     monkeypatch.setattr(run_mod.announcements, "fetch_all", lambda *a, **kw: ([ann], []))
     monkeypatch.setattr(run_mod.llm, "extract_promo", lambda title, body, **kw: {"is_promotion": False})
@@ -35,6 +37,54 @@ def test_run_announcements_skips_non_promo(monkeypatch, cfg, tmp_path):
     n = run_mod.run_announcements(cfg, state_path=tmp_path / "s.json",
                                   today=datetime.date(2026, 6, 16), pause=0)
     assert n == 0
+
+
+def test_bitget_events_check_fires_on_rising_edge(monkeypatch, cfg, tmp_path):
+    # First run: 0/0 baseline → no alert.
+    # Second run: PoolX active rises to 2 → alert mentioning Bitget.
+    state_path = tmp_path / "s.json"
+    monkeypatch.setattr(run_mod.announcements, "fetch_all", lambda *a, **kw: ([], []))
+    sent = []
+    monkeypatch.setattr(run_mod.notify, "send_message",
+                        lambda text, c, **kw: sent.append(text) or True)
+    seq = iter([
+        ([{"page": "PoolX", "url": "https://x", "active": 0, "upcoming": 0},
+          {"page": "Launchpool", "url": "https://y", "active": 0, "upcoming": 0}], []),
+        ([{"page": "PoolX", "url": "https://x", "active": 2, "upcoming": 0},
+          {"page": "Launchpool", "url": "https://y", "active": 0, "upcoming": 0}], []),
+    ])
+    monkeypatch.setattr(run_mod.bitget_events, "fetch_event_status",
+                        lambda *a, **kw: next(seq))
+    n1 = run_mod.run_announcements(cfg, state_path=state_path)
+    assert n1 == 0 and not sent              # baseline, no rise
+    n2 = run_mod.run_announcements(cfg, state_path=state_path)
+    assert n2 == 1 and len(sent) == 1
+    assert "BITGET" in sent[0]               # exchange labelled (memory rule)
+    assert "PoolX" in sent[0]
+
+
+def test_bitget_events_check_silent_when_count_falls(monkeypatch, cfg, tmp_path):
+    # Pool ended (5 → 3 active) should NOT alert. Heads-up is rising-edge only.
+    state_path = tmp_path / "s.json"
+    monkeypatch.setattr(run_mod.announcements, "fetch_all", lambda *a, **kw: ([], []))
+    sent = []
+    monkeypatch.setattr(run_mod.notify, "send_message",
+                        lambda text, c, **kw: sent.append(text) or True)
+    seq = iter([
+        ([{"page": "PoolX", "url": "u", "active": 5, "upcoming": 0},
+          {"page": "Launchpool", "url": "v", "active": 0, "upcoming": 0}], []),
+        ([{"page": "PoolX", "url": "u", "active": 3, "upcoming": 0},
+          {"page": "Launchpool", "url": "v", "active": 0, "upcoming": 0}], []),
+    ])
+    monkeypatch.setattr(run_mod.bitget_events, "fetch_event_status",
+                        lambda *a, **kw: next(seq))
+    # First run: rising from 0 → 5 should alert
+    n1 = run_mod.run_announcements(cfg, state_path=state_path)
+    assert n1 == 1 and len(sent) == 1
+    # Second run: falling 5 → 3 must be silent
+    sent.clear()
+    n2 = run_mod.run_announcements(cfg, state_path=state_path)
+    assert n2 == 0 and sent == []
 
 
 def test_run_announcements_headsup_batches_promos(monkeypatch, cfg, tmp_path):
