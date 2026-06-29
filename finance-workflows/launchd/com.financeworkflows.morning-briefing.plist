@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.financeworkflows.morning-briefing</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/scripts/morning_briefing.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/pochenkuo/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!--
+    Mon-Fri 07:00 TPE — fires BEFORE crypto-daily (07:30) and us-macro (09:30)
+    so the morning-briefing acts as the "cover page" with cross-asset tape +
+    today's calendar, then those workflows go deep on their respective domains.
+
+    Weekend off: tape doesn't move much, calendar value lower, ETF flow stale.
+    -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/pochenkuo/Library/Logs/financeworkflows-morning-briefing.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/pochenkuo/Library/Logs/financeworkflows-morning-briefing.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
