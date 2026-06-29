@@ -1,0 +1,28 @@
+{
+  "$schema_version": 1,
+  "name": "morning-briefing",
+  "description": "Cross-asset pre-market briefing — tape snapshot + 5 things + today's calendar + TW open hint. Bloomberg Five Things + Daily Shot 風格. 07:00 TPE 推送.",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 80,
+  "sources": [
+    { "kind": "macro_data", "name": "FRED" },
+    { "kind": "macro_data", "name": "Yahoo cross-asset" },
+    { "kind": "macro_data", "name": "TWSE 三大法人 / 融資" },
+    { "kind": "extras_json", "name": "fetch_extras (Binance fapi / CBOE VIX / Treasury auctions / DefiLlama stablecoins)" },
+    { "kind": "web", "name": "fed-press", "url": "https://www.federalreserve.gov/newsevents/pressreleases.htm" }
+  ],
+  "tools": ["fred", "yahoo-finance", "twse", "web-fetch"],
+  "prompts": [
+    "prompts/shared/faithfulness.md",
+    "prompts/morning-briefing/framework.md",
+    "prompts/morning-briefing/voice.md",
+    "prompts/morning-briefing/main.md"
+  ],
+  "output": "reports/morning-briefing/{date}.html",
+  "post": { "pdf": true, "telegram": "TELEGRAM_TOPIC_MORNING" },
+  "history": {
+    "format": "jsonl",
+    "summarize_with": "claude-haiku-4-5",
+    "fields": ["mood", "confidence", "top_tape_signals", "today_events", "editor_watch", "vix_backwardation_flag", "btc_funding_z_flag", "adr_premium_flag"]
+  }
+}
