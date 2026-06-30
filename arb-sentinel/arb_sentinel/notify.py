@@ -81,21 +81,34 @@ def format_headsup(items, limit=20) -> str:
     return "\n".join(lines)
 
 
-def format_bitget_events(rising: list) -> str:
-    """rising = [(page, url, active, upcoming, prev_total)]. Heads-up that
-    Bitget PoolX / Launchpool has new pools relative to last poll. The pool
-    list itself is JS-rendered so we can't name the tokens — direct user
-    back to the page. Every line names the exchange (Bitget) explicitly."""
+def format_bitget_events(fresh_per_page: list) -> str:
+    """fresh_per_page = [(page, url, new_projects, count_delta_or_None)].
+    new_projects is a list of dicts {id, reward_coin, stake_coin, apr_percent,
+    total_rewards, detail_url}. If new_projects is empty but count_delta>0,
+    we surface a count-only line (happens when /list errored). Every line
+    names BITGET per the routing rule."""
     e = lambda s: html.escape(str(s))
-    lines = [f"🟡 <b>套利哨兵 | BITGET 活動頁更新</b>（{len(rising)} 個頁面）", ""]
-    for page, url, active, upcoming, prev_total in rising:
-        cur_total = active + upcoming
-        delta = cur_total - prev_total
-        lines.append(
-            f"• <b>BITGET</b> | {e(page)} 新增 {delta} 個"
-            f"(目前進行中 {active} / 即將開始 {upcoming},上次 {prev_total})")
-        lines.append(f"  🔗 {e(url)}")
-    lines.append("\n⚠️ 項目名稱與獎勵需進頁面確認(JS 渲染,本機無法抓)")
+    total_new = sum(max(len(np), d or 0) for _, _, np, d in fresh_per_page)
+    lines = [f"🟡 <b>套利哨兵 | BITGET 活動頁新項目</b>(共 {total_new} 個)", ""]
+    for page, url, new_projects, count_delta in fresh_per_page:
+        lines.append(f"<b>BITGET {e(page)}</b>")
+        if new_projects:
+            for p in new_projects:
+                apr = p.get("apr_percent") or "?"
+                reward = e(p.get("reward_coin") or "?")
+                stake = e(p.get("stake_coin") or "?")
+                rewards = e(p.get("total_rewards") or "?")
+                detail = p.get("detail_url") or url
+                lines.append(
+                    f"• 質押 <b>{stake}</b> → 賺 <b>{reward}</b> "
+                    f"(APR {e(apr)}%, 空投總量 {rewards} {reward})")
+                lines.append(f"  🔗 {e(detail)}")
+        else:
+            lines.append(
+                f"• 新增 {count_delta} 個項目(細節抓取失敗,進頁面看)")
+            lines.append(f"  🔗 {e(url)}")
+        lines.append("")
+    lines.append("⚠️ APR 與空投總量為公告時數字,實際以 App 內為準")
     return "\n".join(lines)
 
 

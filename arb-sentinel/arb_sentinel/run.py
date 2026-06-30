@@ -153,32 +153,50 @@ def _run_announcements_headsup(cfg, state_path=None, limit=20) -> int:
 
 
 def _run_bitget_events_check(cfg, st) -> int:
-    """Scrape Bitget PoolX + Launchpool SSR HTML for project counts and fire
-    a heads-up when the total (active + upcoming) increases since last check.
-    Bitget's public announcement API does NOT carry these — they're UI-only
-    products (verified 2026-06-28: no endpoint in official docs or community
-    wrappers, browser-class JS needed for XHR). Per-page counts persisted in
-    `state["bitget_events_seen"]`. Never raises out."""
+    """Bitget PoolX + Launchpool — fire a heads-up when NEW project IDs
+    appear. Uses the real keyless XHR endpoints captured 2026-06-30
+    (/v1/finance/{poolx,launchpool}/product/count + /list); replaces the
+    earlier SSR scraper that always saw the static (0)/(0) placeholder.
+
+    State shape: `state["bitget_events_seen"][page] = {project_ids: [str, ...]}`.
+    A project ending and disappearing from the running list silently updates
+    state — no alert. A new ID (or a count rise when /list errors so we can't
+    name the project) fires. Never raises out."""
     items, errors = bitget_events.fetch_event_status()
     for err in errors:
         print(f"[bitget-events] {err}", file=sys.stderr)
     if not items:
         return 0
     seen = st.data.setdefault("bitget_events_seen", {})
-    rising = []
+    fresh_per_page = []                        # [(page, url, [new_project, ...], count_delta)]
     for it in items:
-        key = it["page"]
-        prev = seen.get(key, {"active": 0, "upcoming": 0})
-        prev_total = int(prev.get("active", 0)) + int(prev.get("upcoming", 0))
-        cur_total = it["active"] + it["upcoming"]
-        if cur_total > prev_total:
-            rising.append((it["page"], it["url"], it["active"],
-                           it["upcoming"], prev_total))
-        seen[key] = {"active": it["active"], "upcoming": it["upcoming"]}
+        page = it["page"]
+        cur_ids = [p["id"] for p in it.get("projects", []) if p.get("id")]
+        prev = seen.get(page, {})
+        prev_ids = set(prev.get("project_ids") or [])
+        cur_id_set = set(cur_ids)
+        # Genuinely new projects since last poll.
+        added_ids = cur_id_set - prev_ids
+        new_projects = [p for p in it.get("projects", [])
+                        if p.get("id") in added_ids]
+        # Edge case: /list errored so projects=[] but count went up — still
+        # surface a "N new" alert without names.
+        prev_count = int(prev.get("running_num", 0))
+        count_delta = it["running_num"] - prev_count
+        if new_projects:
+            fresh_per_page.append((page, it["url"], new_projects, None))
+        elif count_delta > 0 and not it.get("projects"):
+            fresh_per_page.append((page, it["url"], [], count_delta))
+        seen[page] = {
+            "running_num": it["running_num"],
+            "wait_start_num": it["wait_start_num"],
+            "project_ids": cur_ids,
+        }
     st._save()
-    if not rising:
+    if not fresh_per_page:
         return 0
-    return 1 if notify.send_message(notify.format_bitget_events(rising), cfg) else 0
+    return 1 if notify.send_message(
+        notify.format_bitget_events(fresh_per_page), cfg) else 0
 
 
 def _run_announcements_llm(cfg, state_path=None, today=None, max_llm=20, pause=2.5) -> int:
