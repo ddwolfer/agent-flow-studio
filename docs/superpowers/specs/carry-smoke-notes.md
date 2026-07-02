@@ -3,6 +3,16 @@
 > Smoke script: `arb-sentinel/scripts/carry-smoke.py`
 > Spec: `2026-07-02-carry-guardian.md`
 
+## Slice B 追加發現(2026-07-02 second pass)
+
+Slice B 寫 collector 時實線又發現 3 件 smoke 第一次沒抓到的事:
+
+1. **`/api/v2/earn/savings/assets` 回傳 shape 是 `data.resultList`(list of product dicts),不是 `data` 直接是 list。** 每個 dict 含 `holdAmount`(balance)、`lastProfit`(最近一次 hourly settlement 的量)、`totalProfit`(累積派息)、`apy[]`(tier 帶),欄位比 smoke 第一次看到的多很多。**§5.2 派息稽核不用 balance-delta**,直接用 `totalProfit` snapshot 每輪存 state,digest 算 delta 就是最近 24h 派息量。
+
+2. **`lastProfit` ≠ 全日派息**。實測 24,604 USDGO 位置 lastProfit=0.84,但 spec 期望 6.74/日。0.84 是「最近一個 hourly settlement」的量。相對地,`totalProfit=15.70` 累積 2.5 天 → daily ≈ 6.3(接近 spec 6.74)。**§5.2 audit 用 totalProfit delta,不用 lastProfit**。
+
+3. **`/api/v2/earn/loan/public/hour-interest` 端點所有 param 組合都回 HTTP 400 `Parameter verification failed`**(試過 `coin` / `loanCoin` / `symbol` / 加 `term`)。文件不明。**§5.3 借款利率監控改用 loan_ongoing_orders 自帶的 `hourInterestRate`**(這才是我們實際在付的,反而比市場 baseline 更準)。`loan_hour_interest()` 函式保留但預期會 fail,carry.py 不依賴它。
+
 ## TL;DR — 3 個關鍵單位 / shape 差異必記
 
 1. **`pledgeRate` 是 percent 字串**(`"61.71"`),不是 decimal。要 `/100` 才能跟 config 的 `ltv_watch=0.72` 比。
