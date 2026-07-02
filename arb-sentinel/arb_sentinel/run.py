@@ -144,7 +144,12 @@ def _run_announcements_headsup(cfg, state_path=None, limit=20) -> int:
         is_promo = announcements.looks_like_promo(title, a.get("annType"))
         st.mark_announcement(seen_key, {"exchange": exch, "title": title, "is_promo": is_promo})
         if is_promo:
-            fresh.append((exch, title, a.get("annUrl")))
+            # Best-effort 繁中 translation via Groq. Returns None when the
+            # title is already CJK, GROQ_API_KEY is unset, or Groq is down —
+            # heads-up still fires with just the original title in that case.
+            translated = llm.translate_title(
+                title, api_key=getattr(cfg, "groq_api_key", "") or None)
+            fresh.append((exch, title, a.get("annUrl"), translated))
     sent = 0
     if fresh:
         sent += 1 if notify.send_message(notify.format_headsup(fresh, limit=limit), cfg) else 0

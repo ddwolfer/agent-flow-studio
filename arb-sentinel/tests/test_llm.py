@@ -105,6 +105,52 @@ def test_extract_promo_extracts_digits_from_min_hold_days_string(monkeypatch):
     assert out["min_hold_days"] == 30
 
 
+def test_translate_title_skips_when_already_chinese(monkeypatch):
+    # Title already contains CJK — skip the Groq call entirely (save budget)
+    def boom(self, url, **kw):
+        raise AssertionError("Groq must not be called for a Chinese title")
+    monkeypatch.setattr(httpx.Client, "post", boom)
+    out = llm.translate_title("Bitget USDGO 限時補貼活動", api_key="k")
+    assert out is None
+
+
+def test_translate_title_returns_traditional_chinese(monkeypatch):
+    # English title → Groq returns 繁中 line
+    def fake_post(self, url, **kw):
+        return httpx.Response(200, json={"choices": [{"message": {
+            "content": "Binance Earn 收益競技場:本週限時方案最高年化 35%"}}]},
+            request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    out = llm.translate_title(
+        "Binance Earn Yield Arena: Earn Up to 35% APR", api_key="k")
+    assert out == "Binance Earn 收益競技場:本週限時方案最高年化 35%"
+
+
+def test_translate_title_strips_quotes_and_prefix_lines(monkeypatch):
+    # Groq occasionally wraps output in quotes or adds a "翻譯:" prefix.
+    # Strip both so the caller gets a clean single line.
+    def fake_post(self, url, **kw):
+        return httpx.Response(200, json={"choices": [{"message": {
+            "content": '"Binance Earn 收益競技場"\n'}}]},
+            request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    out = llm.translate_title("Binance Earn Yield Arena", api_key="k")
+    assert out == "Binance Earn 收益競技場"
+
+
+def test_translate_title_never_raises_on_http_error(monkeypatch):
+    def boom(self, url, **kw):
+        raise httpx.ConnectError("down", request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", boom)
+    out = llm.translate_title("Some English Title", api_key="k")
+    assert out is None                       # never-raise, quiet fallback
+
+
+def test_translate_title_no_key_returns_none(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    assert llm.translate_title("Some English Title", api_key="") is None
+
+
 def test_extract_promo_wraps_user_data_in_delimiters(monkeypatch):
     # Prompt-injection defense: title/body must be wrapped with delimiters and
     # an instruction telling the model to treat them as opaque data, not

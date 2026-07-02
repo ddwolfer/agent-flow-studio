@@ -133,6 +133,63 @@ def extract_promo(title, body, api_key=None, model=None, timeout=40.0):
     return obj
 
 
+_CJK_RE = re.compile(r"[一-鿿]")   # Han ideographs; catches Trad+Simp
+
+
+def _has_cjk(s: str) -> bool:
+    return bool(_CJK_RE.search(s or ""))
+
+
+def translate_title(title: str, api_key: str | None = None,
+                    model: str | None = None, timeout: float = 20.0):
+    """Best-effort 繁中 translation of an English announcement title.
+    Returns the translation string on success, or None:
+    - if the title already contains CJK (skip the Groq call to save budget)
+    - if GROQ_API_KEY is missing
+    - if Groq / parsing fails (never raises)
+
+    Used by the deterministic heads-up path to add a 繁中 line under each
+    fresh promo. Cost: ~1 Groq call per fresh promo per launchd tick,
+    bounded by the announcements paginating cap."""
+    if not title or not title.strip():
+        return None
+    if _has_cjk(title):
+        return None
+    key = api_key or os.environ.get("GROQ_API_KEY", "")
+    if not key:
+        return None
+    model = model or os.environ.get("GROQ_MODEL", "") or DEFAULT_MODEL
+    prompt = (
+        "將以下加密貨幣交易所公告標題翻譯成繁體中文,以精簡自然的中文寫,"
+        "保留交易所名稱與代幣代號原文(例:BTC/ETH/USDT/Binance/OKX)。"
+        "只回譯文一行,不要引號、不要「翻譯:」等前綴、不要加註。\n\n"
+        f"<<<TITLE>>>{title}<<<END>>>"
+    )
+    try:
+        with httpx.Client(timeout=timeout) as c:
+            r = c.post(GROQ_URL, headers={"Authorization": f"Bearer {key}"},
+                       json={"model": model, "temperature": 0.2,
+                             "messages": [{"role": "user", "content": prompt}]})
+        if r.status_code != 200:
+            print(f"[llm-translate] groq {r.status_code}: {r.text[:160]}",
+                  file=sys.stderr)
+            return None
+        content = r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"[llm-translate] groq failed: {e}", file=sys.stderr)
+        return None
+    if not content:
+        return None
+    # Clean common Groq quirks: prefixes / quotes / multi-line output
+    line = content.strip().splitlines()[0].strip()
+    for prefix in ("翻譯:", "翻譯：", "譯文:", "譯文：", "Translation:", "translation:"):
+        if line.startswith(prefix):
+            line = line[len(prefix):].strip()
+    if len(line) >= 2 and line[0] == line[-1] and line[0] in ("'", '"', "「", "『"):
+        line = line[1:-1].strip()
+    return line or None
+
+
 def _coerce_int(value, default: int = 0) -> int:
     """Best-effort int coercion: tolerates ints, floats, numeric strings, and
     embedded digits in strings like '30天'. Returns `default` for None and

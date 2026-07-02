@@ -51,6 +51,51 @@ def _bg_proj(pid, reward, stake="USDT", apr="10.0", rewards="1000"):
             "detail_url": f"https://example/{pid}"}
 
 
+def test_headsup_includes_translated_line_for_english_titles(monkeypatch, cfg, tmp_path):
+    # English promo title → Groq translation lands as 🇹🇼 sub-line.
+    anns = [
+        {"_exchange": "binance", "annId": "BX1",
+         "annTitle": "Binance Earn Yield Arena: 35% APR", "annUrl": "https://x"},
+    ]
+    monkeypatch.setattr(run_mod.announcements, "fetch_all",
+                        lambda *a, **kw: (anns, []))
+    monkeypatch.setattr(run_mod.llm, "translate_title",
+                        lambda title, **kw: "Binance Earn 收益競技場:35% 年化")
+    monkeypatch.setattr(run_mod.bitget_events, "fetch_event_status",
+                        lambda *a, **kw: ([], []))
+    sent = []
+    monkeypatch.setattr(run_mod.notify, "send_message",
+                        lambda text, c, **kw: sent.append(text) or True)
+    n = run_mod.run_announcements(cfg, state_path=tmp_path / "s.json")
+    assert n == 1 and len(sent) == 1
+    msg = sent[0]
+    assert "Binance Earn Yield Arena: 35% APR" in msg     # 原文
+    assert "🇹🇼" in msg                                     # 翻譯 marker
+    assert "收益競技場" in msg                              # 譯文
+
+
+def test_headsup_skips_translation_line_when_none(monkeypatch, cfg, tmp_path):
+    # Bitget promo title is already Chinese → translate_title returns None
+    # → no 🇹🇼 sub-line, just original.
+    anns = [
+        {"_exchange": "bitget", "annId": "BG1",
+         "annTitle": "Bitget 補貼活動", "annUrl": "https://y"},
+    ]
+    monkeypatch.setattr(run_mod.announcements, "fetch_all",
+                        lambda *a, **kw: (anns, []))
+    monkeypatch.setattr(run_mod.llm, "translate_title",
+                        lambda title, **kw: None)          # simulates skip
+    monkeypatch.setattr(run_mod.bitget_events, "fetch_event_status",
+                        lambda *a, **kw: ([], []))
+    sent = []
+    monkeypatch.setattr(run_mod.notify, "send_message",
+                        lambda text, c, **kw: sent.append(text) or True)
+    n = run_mod.run_announcements(cfg, state_path=tmp_path / "s.json")
+    assert n == 1
+    assert "🇹🇼" not in sent[0]                             # no translation line
+    assert "Bitget 補貼活動" in sent[0]
+
+
 def test_bitget_events_check_fires_on_new_project_id(monkeypatch, cfg, tmp_path):
     # First run: PoolX has 0 projects → no alert (baseline).
     # Second run: PoolX has 3 NEW projects (JTO/BLUAI/O) → alert mentions all 3.

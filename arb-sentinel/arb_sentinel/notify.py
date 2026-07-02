@@ -67,12 +67,20 @@ def format_opportunity(o: Opportunity, net, est, flag, tier, cfg) -> str:
 
 
 def format_headsup(items, limit=20) -> str:
-    """items = [(exchange, title, url)]. One batched WATCH heads-up; each line names
-    the exchange. Qualitative — no APR math, just 'don't miss this activity'."""
+    """items = [(exchange, title, url)] OR [(exchange, title, url, translated)].
+    One batched WATCH heads-up; each line names the exchange. Qualitative —
+    no APR math, just 'don't miss this activity'. When a 4th element
+    (translated 繁中 title) is present and truthy, it's rendered as a sub-line
+    under the original title."""
     e = lambda s: html.escape(str(s))
     lines = [f"🟡 <b>套利哨兵 | 新活動 heads-up</b>（{len(items)} 則）", ""]
-    for exch, title, url in items[:limit]:
+    for item in items[:limit]:
+        # Unpack 3- or 4-tuple. Back-compat with existing callers.
+        exch, title, url = item[0], item[1], item[2]
+        translated = item[3] if len(item) > 3 else None
         lines.append(f"• <b>{e(exch.upper())}</b> | {e(title)}")
+        if translated:
+            lines.append(f"  🇹🇼 {e(translated)}")
         if url:
             lines.append(f"  🔗 {e(url)}")
     if len(items) > limit:
