@@ -54,6 +54,8 @@ cp .env.example .env     # fill in credentials (see below)
 | `depeg` | alert when a tracked stablecoin pair deviates > `depeg_bps` from 1.0 | TG |
 | `exits` | check `active_positions` for the 4 exit triggers (spec §7) | TG + keys |
 | `monitor` | `depeg` + `exits` combined | TG + keys |
+| `carry` | Bitget carry-guardian: check LTV / borrow / depth every 5 min. **Plan A: only 🔴 CRITICAL LTV + system health push.** WATCH/ALERT surface via `carry-digest`. See `docs/superpowers/specs/2026-07-02-carry-guardian.md` | TG (`TELEGRAM_TOPIC_CARRY`) + Bitget keys |
+| `carry-digest` | Daily 08:00 TPE **heartbeat + full snapshot** (LTV / 24h LTV peak / payout audit via `totalProfit` delta / net spread / all 4 checks). **Missing digest = monitor dead** | TG (`TELEGRAM_TOPIC_CARRY`) + Bitget keys |
 
 Register a position so exit detection watches it:
 
@@ -81,8 +83,52 @@ done
 | `com.arbsentinel.digest` | daily 09:00 |
 | `com.arbsentinel.announcements` | ~2h, 09:30–21:30 |
 | `com.arbsentinel.monitor` | every 2h, 09–21 |
+| `com.arbsentinel.carry` | **every 5 min, 24/7** (real-time LTV monitor) |
+| `com.arbsentinel.carrydigest` | **daily 08:00 TPE** (heartbeat + full snapshot) |
 
 Logs: `~/Library/Logs/arbsentinel-*.log`.
+
+### carry-guardian one-time activation (users with active Bitget carry)
+
+The `carry` + `carry-digest` tasks watch a specific Bitget carry position
+(loan + collateral + savings). Requires 24/7 uptime — **MacBook must be
+open, not asleep** (spec §7).
+
+```bash
+# 1. Open a new forum topic in your Telegram supergroup (dedicated carry alerts)
+#    Note the numeric topic id.
+# 2. Add to arb-sentinel/.env:
+echo "TELEGRAM_TOPIC_CARRY=<topic_id>" >> .env
+
+# 3. Edit arb-sentinel/config.yaml → carry.loan_order_id to your active
+#    Bitget loan order ID (or leave blank for auto-first-active).
+
+# 4. Install the 2 plists:
+cp launchd/com.arbsentinel.carry.plist ~/Library/LaunchAgents/
+cp launchd/com.arbsentinel.carrydigest.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.arbsentinel.carry.plist
+launchctl load ~/Library/LaunchAgents/com.arbsentinel.carrydigest.plist
+
+# 5. Verify:
+launchctl list | grep arbsentinel.carry   # → 2 entries
+.venv/bin/python -m arb_sentinel --task carry-digest  # → forces one digest now
+```
+
+**Deactivate temporarily** (e.g. before travel with laptop closed):
+```bash
+mv ~/Library/LaunchAgents/com.arbsentinel.carry.plist{,.disabled}
+mv ~/Library/LaunchAgents/com.arbsentinel.carrydigest.plist{,.disabled}
+launchctl unload ~/Library/LaunchAgents/com.arbsentinel.carry.plist.disabled
+```
+Rename back and `launchctl load` to resume.
+
+**Alert model recap (Plan A, chosen 2026-07-02):**
+- 🔴 **CRITICAL** (LTV ≥ 0.82) — 5-min immediate push, every tick until LTV falls
+- 🟠 **風控失明** (3+ consecutive API failures) — one push
+- 🟡 **訂單消失** (position closed/liquidated) — one push
+- 📊 **Daily digest** — every 08:00 including WATCH/ALERT levels, borrow rate,
+  depth check, payout audit, 24h LTV peak
+- **Missing digest ≡ monitor dead.** Footer explicit; user must react.
 
 ## Configuration
 
