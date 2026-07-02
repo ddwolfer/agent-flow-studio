@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.arbsentinel.carrydigest</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/pochenkuo/AI/new_financial-report-system/arb-sentinel/scripts/run-task.sh</string>
+    <string>carry-digest</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/Users/pochenkuo/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <!-- Daily 08:00 TPE — heartbeat + full snapshot. If missing, monitor is dead. -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>/Users/pochenkuo/Library/Logs/arbsentinel-carrydigest.log</string>
+  <key>StandardErrorPath</key><string>/Users/pochenkuo/Library/Logs/arbsentinel-carrydigest.log</string>
+  <key>RunAtLoad</key><false/>
+</dict></plist>

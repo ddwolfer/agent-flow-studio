@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.arbsentinel.carry</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/pochenkuo/AI/new_financial-report-system/arb-sentinel/scripts/run-task.sh</string>
+    <string>carry</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/Users/pochenkuo/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <!-- Every 5 minutes, 24/7 (spec §7). Plan A: only 🔴 CRITICAL + system health push. -->
+  <key>StartInterval</key><integer>300</integer>
+  <key>StandardOutPath</key><string>/Users/pochenkuo/Library/Logs/arbsentinel-carry.log</string>
+  <key>StandardErrorPath</key><string>/Users/pochenkuo/Library/Logs/arbsentinel-carry.log</string>
+  <key>RunAtLoad</key><false/>
+</dict></plist>

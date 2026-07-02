@@ -18,3 +18,33 @@ exchanges: [okx, binance, bitget]   # all three live (M4 signed collectors)
 own_funds_mode: true        # true -> borrow_apr=0, net_spread=apr (M1 default)
 announcement_llm: false     # false = deterministic heads-up (no LLM/Groq, zero tokens)
                             # true  = Groq quantitative promo parsing (APR/dates -> graded alert)
+
+# ── carry-guardian (Bitget carry position monitoring) ────────────────────
+# Set enabled=true when there's an active carry loan to monitor.
+# See docs/superpowers/specs/2026-07-02-carry-guardian.md
+carry:
+  enabled: true
+  loan_order_id: "1454384882276573190"   # empty string = auto-take first active
+  loan_coin: USDC
+  pledge_coin: BTC
+  earn_asset: USDGO
+  pair: USDGOUSDC
+  # LTV thresholds (all decimals). WATCH / ALERT are DIGEST-ONLY per Plan A;
+  # CRITICAL is the sole immediate-push trigger.
+  ltv_watch: 0.72
+  ltv_alert: 0.78
+  ltv_critical: 0.82
+  margin_call_ltv: 0.85
+  liquidation_ltv: 0.91
+  # Payout audit — expected APR by tier band (used for §5.2 daily comparison).
+  savings_apr_tiers: [[100000, 0.10], [1000000, 0.065], [null, 0.04]]
+  payout_ratio_floor: 0.9         # <90% of expected → WARN in digest
+  # Borrow rate thresholds — decimals per hour (Bitget returns percent-per-hour;
+  # collector normalises to decimals. 0.0000057 ≈ 5% annualised).
+  borrow_hour_rate_warn: 0.0000057
+  borrow_hour_rate_alert: 0.0000080
+  net_spread_floor: 0.02          # savings_apr - borrow_apr < 2% → ALERT
+  # USDGO exit-liquidity checks
+  bid_floor_warn: 0.9990
+  bid_floor_critical: 0.9970
+  depth_multiple: 2.0             # cum_bid_qty must be >= 2x position size
