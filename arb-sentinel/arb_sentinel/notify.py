@@ -6,23 +6,28 @@ API = "https://api.telegram.org"
 _TIER_EMOJI = {"ACT_NOW": "🔴", "GOOD": "🟠", "WATCH": "🟡", "LOG_ONLY": "⚫"}
 
 
-def send_message(text: str, cfg, pause: float = 1.1) -> bool:
-    """Best-effort send to the arb forum topic. HTML parse_mode. Never raises.
+def send_message(text: str, cfg, pause: float = 1.1,
+                 topic: str | None = None) -> bool:
+    """Best-effort send to a forum topic. HTML parse_mode. Never raises.
 
-    Fails CLOSED when TELEGRAM_TOPIC_ARB is empty — without a thread id the
-    Telegram API silently delivers the message to the group's General chat,
-    which violates the routing rule that every arb-sentinel alert lives in
-    topic 1390. Surface the misconfiguration loudly via stderr instead."""
+    `topic` overrides the default `cfg.telegram_topic_arb` — used by
+    carry-guardian to route to TELEGRAM_TOPIC_CARRY instead of the arb
+    topic. Even the override still fails CLOSED: an empty string still
+    refuses to send (the Telegram API silently delivers to the group's
+    General chat without a thread id, which violates the routing rule).
+
+    Default (`topic=None`) reads `cfg.telegram_topic_arb` as before."""
     if not cfg.telegram_bot_token or not cfg.telegram_chat_id:
         return False
-    if not getattr(cfg, "telegram_topic_arb", ""):
-        print("[telegram] TELEGRAM_TOPIC_ARB is empty — refusing to send to "
-              "General chat (set the env var to the topic id, e.g. 1390)",
+    thread_id = topic if topic is not None else getattr(cfg, "telegram_topic_arb", "")
+    if not thread_id:
+        which = "override 'topic' argument" if topic is not None else "TELEGRAM_TOPIC_ARB"
+        print(f"[telegram] {which} is empty — refusing to send to General chat",
               file=sys.stderr)
         return False
     data = {"chat_id": cfg.telegram_chat_id, "text": text,
             "parse_mode": "HTML", "disable_web_page_preview": "true",
-            "message_thread_id": cfg.telegram_topic_arb}
+            "message_thread_id": thread_id}
     ok = False
     try:
         with httpx.Client(timeout=30.0) as c:

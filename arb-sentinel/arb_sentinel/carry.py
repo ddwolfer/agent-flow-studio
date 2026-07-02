@@ -142,7 +142,8 @@ def evaluate_depth(bid1_price: float, cum_bid_qty: float,
 
 
 # ── immediate-push evaluator (Plan A: CRITICAL + system health only) ────────
-def evaluate_immediate(orders: list, api_fail_count: int, cfg) -> list[str]:
+def evaluate_immediate(orders: list, api_fail_count: int, cfg,
+                       orders_valid: bool = True) -> list[str]:
     """Called every 5-min tick. Returns list of Telegram-ready HTML messages
     for genuinely urgent conditions ONLY. Plan A skips WATCH / ALERT / borrow
     warnings — those wait for the digest.
@@ -151,8 +152,10 @@ def evaluate_immediate(orders: list, api_fail_count: int, cfg) -> list[str]:
       1. 風控失明 (api_fail_count >= 3): API blindness — silently treating
          empty orders as 'liquidated' would be catastrophic, so this MUST
          come first and overrides the orders check.
-      2. 訂單消失 (orders == [] and api_fail_count < 3): position closed or
-         liquidated. One alert (dedup handled by state in run.py).
+      2. 訂單消失 (orders == [] AND orders_valid AND api_fail_count < 3):
+         position closed or liquidated. `orders_valid` is caller's assertion
+         that the fetch succeeded — with orders_valid=False the empty list
+         is 'we couldn't tell', not 'gone'.
       3. 🔴 CRITICAL LTV: LTV >= ltv_critical for any surfaced order.
          Fires EVERY tick until LTV falls (spec §5.1: '每次執行都通知')."""
     msgs = []
@@ -162,7 +165,7 @@ def evaluate_immediate(orders: list, api_fail_count: int, cfg) -> list[str]:
             f"連續 {api_fail_count} 次抓 loan/ongoing-orders 失敗。"
             "在恢復前,請手動檢查 Bitget App 的 LTV。")
         return msgs                           # do not evaluate CRITICAL blind
-    if not orders:
+    if not orders and orders_valid:
         msgs.append(
             "🟡 <b>套利哨兵 | BITGET Carry · 借款訂單消失</b>\n\n"
             "查無進行中的 loan 訂單。可能是:\n"

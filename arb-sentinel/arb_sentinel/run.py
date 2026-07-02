@@ -1,6 +1,6 @@
 import datetime, os, sys, time
 from .collectors import okx, binance, bitget, announcements, bitget_events
-from . import engine, notify, llm, exits
+from . import engine, notify, llm, exits, carry
 from .models import Opportunity
 from .state import State
 
@@ -365,3 +365,84 @@ def run_exits(cfg, state_path=None, today=None) -> int:
 def run_monitor(cfg, state_path=None, today=None) -> int:
     """Combined position-watch task: de-peg + exit detection."""
     return run_depeg(cfg, state_path) + run_exits(cfg, state_path, today)
+
+
+# ── carry-guardian tasks (Slice D) ───────────────────────────────────────────
+# Wired via __main__ --task carry / --task carry-digest.
+# All alerts route to TELEGRAM_TOPIC_CARRY (topic 1521), not the arb topic.
+
+
+def _carry_topic(cfg):
+    """Resolve carry topic env → cfg.telegram_topic_carry, with default None
+    that makes send_message fail-closed and log the misconfig."""
+    return getattr(cfg, "telegram_topic_carry", "") or None
+
+
+def run_carry(cfg, state_path=None) -> int:
+    """5-min tick: fetch position + savings + orderbook, evaluate immediate
+    rules (Plan A: 🔴 CRITICAL LTV + system health only), update state
+    trackers (24h LTV high, api_fail_count). Never raises out."""
+    st = State(state_path)
+    orders, order_errs = bitget.loan_ongoing_orders(cfg)
+    for err in order_errs:
+        print(f"[carry] {err}", file=sys.stderr)
+    # api_fail_count: increments on any error touching the orders endpoint;
+    # resets to 0 on any success (empty list AS a success is OK — that's the
+    # "訂單消失" case, handled by evaluate_immediate).
+    fail_count = int(st.data.get("carry_api_fail_count") or 0)
+    if order_errs:
+        fail_count += 1
+    else:
+        fail_count = 0
+    st.data["carry_api_fail_count"] = fail_count
+    # Track 24h LTV high across ticks (reset after digest by run_carry_digest)
+    high = float(st.data.get("carry_ltv_24h_high") or 0.0)
+    for o in orders:
+        cur = float(o.get("ltv") or 0.0)
+        if cur > high:
+            high = cur
+    st.data["carry_ltv_24h_high"] = high
+    st._save()
+    msgs = carry.evaluate_immediate(orders=orders, api_fail_count=fail_count,
+                                     cfg=cfg,
+                                     orders_valid=(not order_errs))
+    if not msgs:
+        return 0
+    topic = _carry_topic(cfg)
+    sent = 0
+    for msg in msgs:
+        if notify.send_message(msg, cfg, topic=topic):
+            sent += 1
+    return sent
+
+
+def run_carry_digest(cfg, state_path=None) -> int:
+    """08:00 daily digest — one message. Fires ALWAYS (heartbeat contract) —
+    even if position is closed, so the user knows the monitor is alive.
+    Rotates snapshots (yesterday ← today) and resets ltv_24h_high after."""
+    st = State(state_path)
+    orders, _ = bitget.loan_ongoing_orders(cfg)
+    savings_asset = getattr(cfg, "carry_earn_asset", "USDGO")
+    savings, _ = bitget.savings_assets(savings_asset, cfg)
+    pair = getattr(cfg, "carry_pair", f"{savings_asset}USDC")
+    book, _ = bitget.spot_orderbook(pair, limit=15)
+    yesterday = st.data.get("carry_last_digest_snapshot")
+    ltv_24h_high = st.data.get("carry_ltv_24h_high")
+    data = carry.build_digest(orders=orders, savings=savings, book=book,
+                              yesterday_snapshot=yesterday,
+                              ltv_24h_high=ltv_24h_high, cfg=cfg)
+    date_str = _today().isoformat()
+    msg = carry.format_digest(data, date_str)
+    topic = _carry_topic(cfg)
+    ok = notify.send_message(msg, cfg, topic=topic)
+    # Rotate snapshots AFTER send: today's totals become tomorrow's yesterday.
+    if savings:
+        st.data["carry_last_digest_snapshot"] = {
+            "total_profit": savings.get("total_profit") or 0.0,
+            "ltv": (orders[0].get("ltv") if orders else 0.0),
+            "ts": date_str,
+        }
+    # Reset 24h LTV high for the next window
+    st.data["carry_ltv_24h_high"] = 0.0
+    st._save()
+    return 1 if ok else 0

@@ -47,6 +47,35 @@ def test_send_fails_closed_when_topic_arb_missing(monkeypatch, cfg):
     assert posted["called"] is False, "must not POST to Telegram when topic_arb empty"
 
 
+def test_send_uses_topic_override_when_supplied(monkeypatch, cfg):
+    # carry-guardian sends to TELEGRAM_TOPIC_CARRY (different from _ARB).
+    # send_message accepts a `topic` kwarg to override cfg.telegram_topic_arb.
+    captured = {}
+    def fake_post(self, url, data=None, **kw):
+        captured["data"] = data
+        return httpx.Response(200, json={"ok": True},
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    ok = notify.send_message("hi", cfg, topic="1521")
+    assert ok is True
+    assert captured["data"]["message_thread_id"] == "1521"   # overridden
+    # NOT the default topic_arb "1390"
+    assert captured["data"]["message_thread_id"] != cfg.telegram_topic_arb
+
+
+def test_send_fails_closed_when_topic_override_empty(monkeypatch, cfg):
+    # Explicit override with empty string must still fail closed — never
+    # silently send to General chat.
+    posted = {"called": False}
+    def fake_post(self, url, data=None, **kw):
+        posted["called"] = True
+        return httpx.Response(200, json={"ok": True},
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    assert notify.send_message("hi", cfg, topic="") is False
+    assert posted["called"] is False
+
+
 def test_send_sleeps_on_failure_to_throttle_429_burst(monkeypatch, cfg):
     # On non-200 (especially 429), the previous shape skipped the sleep and
     # returned False immediately — back-to-back failures hit Telegram with
