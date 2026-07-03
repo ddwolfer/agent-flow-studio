@@ -23,7 +23,7 @@ announcement_llm: false     # false = deterministic heads-up (no LLM/Groq, zero 
 # Set enabled=true when there's an active carry loan to monitor.
 # See docs/superpowers/specs/2026-07-02-carry-guardian.md
 carry:
-  enabled: true
+  enabled: false
   loan_order_id: "1454384882276573190"   # empty string = auto-take first active
   loan_coin: USDC
   pledge_coin: BTC
