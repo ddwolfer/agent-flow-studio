@@ -233,6 +233,123 @@ def test_evaluate_immediate_fires_on_3_consecutive_api_fails():
     assert any("風控失明" in m or "失明" in m for m in msgs)
 
 
+from arb_sentinel import carry as _carry_mod  # noqa (re-import for below)
+
+
+# ── Slice G: digest simplification (no more actual-vs-expected audit) ────────
+def _sample_savings_for_digest():
+    return {"asset": "USDGO", "balance": 24604.61,
+            "last_profit": 0.84, "total_profit": 15.70,
+            "apy_tiers": [
+                {"level": "1", "min": 0, "max": 100000, "apy_percent": 10.00},
+                {"level": "2", "min": 100000, "max": 1_000_000, "apy_percent": 6.50}]}
+
+
+def _sample_order_for_digest():
+    return {"order_id": "abc", "loan_coin": "USDC", "pledge_coin": "BTC",
+            "loan_amount": 21580.0, "interest_amount": 1.43,
+            "pledge_amount": 0.56571,
+            "ltv": 0.6162, "margin_call_ltv": 0.85, "liquidation_ltv": 0.91,
+            "hour_rate": 0.00000313, "annual_rate": 0.02742}
+
+
+def _sample_book_for_digest():
+    return {"symbol": "USDGOUSDC", "bid1_price": 1.0002,
+            "cum_bid_qty": 1_500_000, "bid_levels": 15, "ask1_price": 1.0004}
+
+
+def test_build_digest_surfaces_current_tier_apr_from_apy_tiers():
+    """Digest shows the ACTIVE tier's APR (based on current balance walking
+    the tier bands), NOT just the first tier hardcoded."""
+    cfg = _cfg()
+    data = _carry_mod.build_digest(
+        orders=[_sample_order_for_digest()],
+        savings=_sample_savings_for_digest(),
+        book=_sample_book_for_digest(),
+        yesterday_snapshot=None, ltv_24h_high=None, cfg=cfg)
+    # 24k balance is in tier 1 (0-100k @ 10%) → digest picks 10%
+    assert abs(data["current_tier_apr"] - 0.10) < 1e-9
+    assert data["current_tier_level"] == "1"
+
+
+def test_build_digest_surfaces_current_tier_apr_when_balance_crosses_tier():
+    """Balance 500k spans tier 1 (100k @ 10%) + tier 2 (400k @ 6.5%). The
+    'headline APR' shown should be the ACTIVE TIER of the current balance
+    (tier 2 @ 6.5%), reflecting real-time rate they see in the App."""
+    cfg = _cfg()
+    savings = _sample_savings_for_digest()
+    savings["balance"] = 500000.0
+    data = _carry_mod.build_digest(
+        orders=[_sample_order_for_digest()],
+        savings=savings, book=_sample_book_for_digest(),
+        yesterday_snapshot=None, ltv_24h_high=None, cfg=cfg)
+    assert abs(data["current_tier_apr"] - 0.065) < 1e-9
+    assert data["current_tier_level"] == "2"
+
+
+def test_build_digest_computes_expected_daily_from_current_state():
+    """expected_daily = balance walked through tiers / 365 — a live
+    informational number, NOT compared to actual."""
+    cfg = _cfg()
+    data = _carry_mod.build_digest(
+        orders=[_sample_order_for_digest()],
+        savings=_sample_savings_for_digest(),
+        book=_sample_book_for_digest(),
+        yesterday_snapshot=None, ltv_24h_high=None, cfg=cfg)
+    # 24604.61 × 10% / 365 = 6.741 (uses cfg.savings_apr_tiers)
+    assert abs(data["expected_daily_payout"] - 24604.61 * 0.10 / 365) < 1e-3
+
+
+def test_build_digest_no_payout_audit_field():
+    """Slice G removes actual-vs-expected. `payout_audit` should NOT
+    appear in the returned dict — if the audit function ever gets called,
+    it becomes internal dead code with its own unit tests."""
+    cfg = _cfg()
+    data = _carry_mod.build_digest(
+        orders=[_sample_order_for_digest()],
+        savings=_sample_savings_for_digest(),
+        book=_sample_book_for_digest(),
+        yesterday_snapshot={"total_profit": 9.2}, ltv_24h_high=None, cfg=cfg)
+    assert "payout_audit" not in data
+
+
+def test_format_digest_shows_apr_expected_and_cumulative_no_delta():
+    """Formatted message: 現行 APR / 預估日派息 / 累積派息, but NO
+    'actual vs expected' / '達成 X%' line."""
+    cfg = _cfg()
+    data = _carry_mod.build_digest(
+        orders=[_sample_order_for_digest()],
+        savings=_sample_savings_for_digest(),
+        book=_sample_book_for_digest(),
+        yesterday_snapshot={"total_profit": 9.2}, ltv_24h_high=None, cfg=cfg)
+    msg = _carry_mod.format_digest(data, "2026-07-03")
+    # Present
+    assert "現行 APR" in msg
+    assert "10.00%" in msg
+    assert "預估日派息" in msg
+    assert "累積派息" in msg
+    assert "15.70" in msg              # cumulative from totalProfit
+    assert "1.43" in msg                # yesterday's interest cost
+    # Absent (delta-audit vestige)
+    assert "達成" not in msg or "達成率" not in msg
+    assert "實收" not in msg
+    assert "vs 預期" not in msg
+
+
+def test_format_digest_shows_higher_tier_when_balance_crosses():
+    """Position at 500k → digest surfaces tier 2 @ 6.5%, not tier 1 @ 10%."""
+    cfg = _cfg()
+    savings = _sample_savings_for_digest()
+    savings["balance"] = 500000.0
+    data = _carry_mod.build_digest(
+        orders=[_sample_order_for_digest()],
+        savings=savings, book=_sample_book_for_digest(),
+        yesterday_snapshot=None, ltv_24h_high=None, cfg=cfg)
+    msg = _carry_mod.format_digest(data, "2026-07-03")
+    assert "6.50%" in msg
+    assert "tier 2" in msg.lower() or "階梯 2" in msg
+
+
 def test_evaluate_immediate_low_api_fail_count_ignored():
     cfg = _cfg()
     order = {"ltv": 0.60, "loan_amount": 21580, "pledge_amount": 0.56571,

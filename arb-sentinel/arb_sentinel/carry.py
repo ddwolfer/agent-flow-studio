@@ -202,14 +202,40 @@ def evaluate_immediate(orders: list, api_fail_count: int, cfg,
 
 
 # ── digest state builder ────────────────────────────────────────────────────
+def _current_tier(balance: float, tiers: list) -> tuple[float, str]:
+    """Walk live tier bands from the savings/assets response to find the
+    ACTIVE tier for the current balance. Returns (apy_decimal, level_str).
+    Uses live tier data (not cfg.savings_apr_tiers) so a Bitget-side rate
+    change surfaces immediately in the next digest."""
+    for tier in tiers or []:
+        lo = float(tier.get("min") or 0)
+        hi_raw = tier.get("max")
+        hi = float(hi_raw) if hi_raw not in (None, 0) else float("inf")
+        if lo <= balance < hi:
+            return (float(tier.get("apy_percent") or 0.0) / 100.0,
+                    str(tier.get("level") or "?"))
+    # Balance beyond all defined bands — last tier applies
+    if tiers:
+        last = tiers[-1]
+        return (float(last.get("apy_percent") or 0.0) / 100.0,
+                str(last.get("level") or "?"))
+    return (0.0, "?")
+
+
 def build_digest(orders: list, savings: dict | None, book: dict | None,
                  yesterday_snapshot: dict | None,
                  ltv_24h_high: float | None, cfg) -> dict:
     """Assemble all data needed for the daily digest. Returns a dict the
-    format layer can render. `yesterday_snapshot` holds
-    {total_profit: float, ltv: float} recorded 24h ago; used for payout
-    audit + trend annotation. `ltv_24h_high` is the max LTV observed in the
-    last 24h ticks (state-tracked)."""
+    format layer can render.
+
+    Slice G (2026-07-03): removed the actual-vs-expected payout audit.
+    Manual USDGO redeems / subscribes made the audit noisy (see spec
+    discussion). Digest now surfaces the LIVE tier APR from savings.
+    apy_tiers plus cumulative totalProfit — informational, not compared
+    to a delta. `yesterday_snapshot` argument kept for back-compat but
+    unused; can be removed in a later cleanup.
+
+    `ltv_24h_high` is the max LTV observed in the last 24h ticks."""
     result = {
         "have_position": bool(orders),
         "ltv_24h_high": ltv_24h_high,
@@ -222,30 +248,24 @@ def build_digest(orders: list, savings: dict | None, book: dict | None,
         order.get("loan_amount") or 0.0, order.get("pledge_amount") or 0.0,
         ltv, order.get("margin_call_ltv") or cfg.margin_call_ltv,
         order.get("liquidation_ltv") or cfg.liquidation_ltv)
-    savings_apr = 0.0
     balance = 0.0
     last_profit = 0.0
     total_profit = 0.0
-    payout_audit = {"level": "UNKNOWN", "actual": 0.0, "expected": 0.0,
-                    "ratio": 0.0}
+    current_tier_apr = 0.0
+    current_tier_level = "?"
+    expected_daily = 0.0
     if savings:
         balance = savings.get("balance") or 0.0
         last_profit = savings.get("last_profit") or 0.0
         total_profit = savings.get("total_profit") or 0.0
-        # Apply the first tier's APR as headline reference for the digest
-        tiers = savings.get("apy_tiers") or []
-        if tiers:
-            savings_apr = (tiers[0].get("apy_percent") or 0.0) / 100.0
-        yprev = (yesterday_snapshot or {}).get("total_profit")
-        payout_audit = audit_payout(
-            today_total_profit=total_profit,
-            yesterday_total_profit=yprev,
-            balance=balance,
-            tiers=cfg.savings_apr_tiers,
-            floor_ratio=cfg.payout_ratio_floor)
+        # Use LIVE tier data from savings.apy_tiers — reflects any Bitget
+        # rate change the next tick.
+        current_tier_apr, current_tier_level = _current_tier(
+            balance, savings.get("apy_tiers") or [])
+        expected_daily = expected_daily_payout(balance, cfg.savings_apr_tiers)
     hour_rate = order.get("hour_rate") or 0.0
     borrow_level, borrow_reason = evaluate_borrow_rate(
-        hour_rate=hour_rate, savings_apr=savings_apr, cfg=cfg)
+        hour_rate=hour_rate, savings_apr=current_tier_apr, cfg=cfg)
     depth_level, depth_reason = ("UNKNOWN", "orderbook 抓不到")
     if book:
         depth_level, depth_reason = evaluate_depth(
@@ -263,10 +283,12 @@ def build_digest(orders: list, savings: dict | None, book: dict | None,
         "balance": balance,
         "last_profit": last_profit,
         "total_profit": total_profit,
-        "savings_apr_headline": savings_apr,
+        # NEW in Slice G: live tier + expected daily (no audit)
+        "current_tier_apr": current_tier_apr,
+        "current_tier_level": current_tier_level,
+        "expected_daily_payout": expected_daily,
         "annual_borrow": hour_rate * 24 * 365,
-        "net_spread": savings_apr - hour_rate * 24 * 365,
-        "payout_audit": payout_audit,
+        "net_spread": current_tier_apr - hour_rate * 24 * 365,
         "borrow_level": borrow_level,
         "borrow_reason": borrow_reason,
         "depth_level": depth_level,
@@ -299,18 +321,15 @@ def format_digest(data: dict, date_str: str) -> str:
         high_line = (f"• LTV(24h 最高): {ltv_24h_high*100:.2f}% "
                      f"(BTC 昨日最低 ${hatch['price_at_margin_call']:,.0f} "
                      f"以上均安全)\n")
-    pa = data["payout_audit"]
-    payout_line = (
-        f"• 派息實收: {pa['actual']:.2f} {e(data['savings']['asset'])}"
-        f" (預期 {pa['expected']:.2f}, 達成 {pa['ratio']*100:.0f}%)"
-        if pa["level"] != "UNKNOWN"
-        else f"• 派息累積 {data['total_profit']:.2f} "
-             f"{e(data['savings']['asset']) if data.get('savings') else ''} "
-             f"(首日,尚無 24h 對照)")
+    asset = e(data['savings']['asset']) if data.get('savings') else ""
+    tier_apr = data.get("current_tier_apr", 0.0)
+    tier_level = data.get("current_tier_level", "?")
+    expected_daily = data.get("expected_daily_payout", 0.0)
     ns = data["net_spread"]
+    # Estimated daily USD net (rough: expected earnings − yesterday borrow cost)
+    net_daily_usd = expected_daily - order.get('interest_amount', 0.0)
     checks = (
         f"{_LEVEL_ICON.get(data['ltv_level'],'⚪')} LTV · "
-        f"{_LEVEL_ICON.get(pa['level'],'⚪')} 派息 · "
         f"{_LEVEL_ICON.get(data['borrow_level'],'⚪')} 借款 · "
         f"{_LEVEL_ICON.get(data['depth_level'],'⚪')} USDGO bid1 "
         f"{(data['book'] or {}).get('bid1_price', 0):.4f}")
@@ -325,17 +344,19 @@ def format_digest(data: dict, date_str: str) -> str:
         f"(+{order.get('interest_amount',0):.4f} 累息)\n"
         f"• 抵押: {order.get('pledge_amount',0):.5f} {e(order.get('pledge_coin','?'))} "
         f"≈ ${hatch['btc_price_now']*(order.get('pledge_amount') or 0):,.0f}\n"
-        f"• 餘額: {data['balance']:,.4f} "
-        f"{e(data['savings']['asset']) if data.get('savings') else ''}\n\n"
-        f"💰 <b>昨日收益</b>\n"
-        f"{payout_line}\n"
-        f"• 借款利息累計: {order.get('interest_amount',0):.4f} "
-        f"{e(order.get('loan_coin','?'))}\n\n"
+        f"• 餘額: {data['balance']:,.4f} {asset}\n\n"
+        f"💰 <b>收益</b>\n"
+        f"• 現行 APR: {tier_apr*100:.2f}%(tier {tier_level})\n"
+        f"• 預估日派息: {expected_daily:.2f} {asset}\n"
+        f"• 累積派息(自開倉): {data['total_profit']:.2f} {asset}\n"
+        f"• 昨日借款利息: {order.get('interest_amount',0):.4f} "
+        f"{e(order.get('loan_coin','?'))}\n"
+        f"• 預估淨利: ≈ ${net_daily_usd:.2f}/日\n\n"
         f"📈 <b>利差健康</b>\n"
         f"• 淨利差: {ns*100:+.2f}% "
-        f"(APR {data['savings_apr_headline']*100:.2f}% "
+        f"(APR {tier_apr*100:.2f}% "
         f"− 借款 {data['annual_borrow']*100:.2f}%)\n\n"
-        f"🩺 <b>4 項檢查</b>\n"
+        f"🩺 <b>3 項檢查</b>\n"
         f"{checks}\n\n"
         f"—\n"
         f"⚠️ 沒收到此訊息 = 監控掛了,請手動查\n"

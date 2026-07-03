@@ -419,30 +419,29 @@ def run_carry(cfg, state_path=None) -> int:
 def run_carry_digest(cfg, state_path=None) -> int:
     """08:00 daily digest — one message. Fires ALWAYS (heartbeat contract) —
     even if position is closed, so the user knows the monitor is alive.
-    Rotates snapshots (yesterday ← today) and resets ltv_24h_high after."""
+
+    Slice G (2026-07-03): stopped writing carry_last_digest_snapshot. The
+    delta-based payout audit was noisy when the user manually redeemed
+    USDGO to repay interest, and Bitget's live apy_tiers is a cleaner
+    silent-APR-cut detector. Still resets ltv_24h_high after send.
+
+    The `carry_last_digest_snapshot` key remains in state.json for
+    installs that predate this slice (harmless dead data)."""
     st = State(state_path)
     orders, _ = bitget.loan_ongoing_orders(cfg)
     savings_asset = getattr(cfg, "carry_earn_asset", "USDGO")
     savings, _ = bitget.savings_assets(savings_asset, cfg)
     pair = getattr(cfg, "carry_pair", f"{savings_asset}USDC")
     book, _ = bitget.spot_orderbook(pair, limit=15)
-    yesterday = st.data.get("carry_last_digest_snapshot")
     ltv_24h_high = st.data.get("carry_ltv_24h_high")
     data = carry.build_digest(orders=orders, savings=savings, book=book,
-                              yesterday_snapshot=yesterday,
+                              yesterday_snapshot=None,   # audit removed
                               ltv_24h_high=ltv_24h_high, cfg=cfg)
     date_str = _today().isoformat()
     msg = carry.format_digest(data, date_str)
     topic = _carry_topic(cfg)
     ok = notify.send_message(msg, cfg, topic=topic)
-    # Rotate snapshots AFTER send: today's totals become tomorrow's yesterday.
-    if savings:
-        st.data["carry_last_digest_snapshot"] = {
-            "total_profit": savings.get("total_profit") or 0.0,
-            "ltv": (orders[0].get("ltv") if orders else 0.0),
-            "ts": date_str,
-        }
-    # Reset 24h LTV high for the next window
+    # Reset 24h LTV high for the next window (snapshot rotation removed).
     st.data["carry_ltv_24h_high"] = 0.0
     st._save()
     return 1 if ok else 0

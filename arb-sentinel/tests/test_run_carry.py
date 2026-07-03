@@ -159,23 +159,19 @@ def test_run_carry_digest_sends_to_carry_topic(monkeypatch, tmp_path):
     text, kw = sent[0]
     assert "Carry 日報" in text
     assert kw.get("topic") == "1521"
-    # After the digest fires it snapshots today's totals for tomorrow's audit
+    # Slice G: no more carry_last_digest_snapshot rotation (audit removed).
     st = State(tmp_path / "s.json")
-    snap = st.data.get("carry_last_digest_snapshot") or {}
-    assert abs(snap.get("total_profit", 0) - 15.70) < 1e-6
+    assert "carry_last_digest_snapshot" not in st.data
+    # But ltv_24h_high IS reset for the next window
+    assert st.data.get("carry_ltv_24h_high") == 0.0
 
 
-def test_run_carry_digest_second_day_shows_delta(monkeypatch, tmp_path):
-    """After yesterday's snapshot exists, today's audit uses delta."""
+def test_run_carry_digest_surfaces_live_apr_and_expected_daily(monkeypatch, tmp_path):
+    """Slice G digest shows current-tier APR + expected daily payout
+    (informational, not delta-audit)."""
     cfg = _cfg()
-    state_path = tmp_path / "s.json"
-    # Seed yesterday's snapshot
-    st0 = State(state_path)
-    st0.data["carry_last_digest_snapshot"] = {"total_profit": 9.2}
-    st0._save()
     monkeypatch.setattr(run_mod.bitget, "loan_ongoing_orders",
                         lambda cfg: ([_sample_order(ltv=0.61)], []))
-    # totalProfit rose by 6.5 since yesterday → ~healthy vs 6.74 expected
     monkeypatch.setattr(run_mod.bitget, "savings_assets",
                         lambda asset, cfg: (_sample_savings(), []))
     monkeypatch.setattr(run_mod.bitget, "spot_orderbook",
@@ -183,11 +179,14 @@ def test_run_carry_digest_second_day_shows_delta(monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr(run_mod.notify, "send_message",
                         lambda text, cfg, **kw: sent.append(text) or True)
-    n = run_mod.run_carry_digest(cfg, state_path=state_path)
+    n = run_mod.run_carry_digest(cfg, state_path=tmp_path / "s.json")
     assert n == 1
     msg = sent[0]
-    # Digest now contains actual vs expected — the delta 6.5 shows up
-    assert "6.5" in msg or "6.50" in msg
+    assert "現行 APR: 10.00%" in msg          # from savings.apy_tiers live
+    assert "預估日派息: 6.74" in msg           # 24604.61 × 10% / 365
+    assert "累積派息" in msg
+    assert "達成" not in msg                    # no more actual-vs-expected
+    assert "vs 預期" not in msg
 
 
 def test_run_carry_digest_silent_on_no_position(monkeypatch, tmp_path):
