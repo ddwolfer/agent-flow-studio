@@ -120,7 +120,7 @@ After all tickers: write market view (bull / neutral / bear + confidence 0-10) +
 </p>
 ```
 
-**Add at the top, right under `<h1>`** (to mark this as a custom-watchlist run, not the launchd-scheduled one):
+**Add at the top, right under `<h1>`** (to mark this as a custom-watchlist interactive run, distinct from the workflow.json's default watchlist):
 
 ```html
 <p class="custom-note" style="background:#fffae0;padding:8px 12px;border-left:3px solid #d4a017;font-size:0.92em;">
@@ -182,8 +182,10 @@ history-derived summary. The PDF (if present) will be attached as document.
 1. HTML path.
 2. Tickers + tier recap.
 3. Telegram push status (推送成功 / PDF 是否附上 / _brief.md 寫入).
-4. If launchd already ran today: HTML/PDF **overwritten**; if preservation
-   matters, rename before re-running.
+4. If you invoked the skill earlier today with the same date: HTML/PDF
+   **overwritten**; if preservation matters, rename the prior file before
+   re-running. (This workflow is interactive-only per user's setup — no
+   launchd scheduled runs of deep-stock-research to worry about.)
 
 **Never ask "要不要推 Telegram" — the answer is always yes.** The only
 reason to skip 5a-5c is if the tools genuinely fail (Chrome absent,
