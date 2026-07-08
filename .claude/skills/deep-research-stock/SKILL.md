@@ -132,17 +132,63 @@ After all tickers: write market view (bull / neutral / bear + confidence 0-10) +
 
 (Replace the ticker list with the actual one. Replace the timestamp with the current Asia/Taipei timestamp.)
 
-### Stage 5 — Wrap up
+### Stage 5 — Auto post-processing (PDF + brief + Telegram)
 
-Tell the user:
+Per user's durable preference (memory: `feedback_deep_stock_auto_pdf_telegram`),
+after the HTML is written, DO NOT stop and ask — automatically execute all
+three post-steps and only then tell the user what happened.
 
-1. HTML path written to.
-2. Tickers + tier assignment (recap).
-3. Optional manual Telegram push command (do **not** auto-run):
-   ```bash
-   finance-workflows/mcp/.venv/bin/python finance-workflows/scripts/notify_telegram.py deep-stock-research <today>
-   ```
-4. Reminder: if today already had a launchd-scheduled run, this Write **overwrites** the same `<today>.html`. If preservation matters, rename the prior file before re-running, or invoke this skill with `--keep` semantics in a future version (not implemented yet).
+**5a. Generate PDF via headless Chrome:**
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+  "--print-to-pdf=finance-workflows/reports/deep-stock-research/<today>.pdf" \
+  "file://<absolute path to today's html>"
+```
+
+If Chrome is missing at the standard path, fall back to
+`/usr/bin/google-chrome` / `google-chrome-stable`. If none exist, skip PDF
+and continue — do not abort the rest of the flow.
+
+**5b. Write `_brief.md`:**
+
+Write `finance-workflows/reports/deep-stock-research/_brief.md` (overwrite
+the previous day's brief — it's the "latest" brief per the notify_telegram
+mechanism). Follow the shape of the last committed `_brief.md` (Markdown
+with emojis, sections for 基調 / 總經 / 跨檔 threads / 分檔結論 /
+最該追蹤 / 報告檔). Keep under ~1800 chars so Telegram doesn't split.
+
+**5c. Push Telegram via `notify_telegram.notify()`:**
+
+Run a small Python invocation to call the module (it has no `__main__`):
+
+```bash
+cd finance-workflows && set -a && source .env && set +a && mcp/.venv/bin/python <<PY
+import pathlib, sys
+sys.path.insert(0, 'scripts')
+import notify_telegram
+html = pathlib.Path('reports/deep-stock-research/<today>.html').resolve()
+hist = pathlib.Path('reports/deep-stock-research/_history.jsonl').resolve()
+notify_telegram.notify('deep-stock-research', '<today>', html, hist,
+                       'TELEGRAM_TOPIC_DEEP_STOCK')
+PY
+```
+
+The `_brief.md` (if present) will BE the Telegram body, overriding the
+history-derived summary. The PDF (if present) will be attached as document.
+
+**5d. Tell the user (short):**
+
+1. HTML path.
+2. Tickers + tier recap.
+3. Telegram push status (推送成功 / PDF 是否附上 / _brief.md 寫入).
+4. If launchd already ran today: HTML/PDF **overwritten**; if preservation
+   matters, rename before re-running.
+
+**Never ask "要不要推 Telegram" — the answer is always yes.** The only
+reason to skip 5a-5c is if the tools genuinely fail (Chrome absent,
+`.env` missing TELEGRAM_BOT_TOKEN, etc.), in which case tell the user what
+failed and continue with the rest.
 
 ## Hard rules
 
