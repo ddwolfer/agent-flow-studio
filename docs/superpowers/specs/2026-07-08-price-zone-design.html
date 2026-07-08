@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Spec: price-zone v0.2 · 2026-07-08</title>
+<style>
+:root{--bg:#fafafa;--ink:#111;--mute:#666;--rule:#e5e5e5;--accent:#1f6feb;--chip-bg:#f1f3f5;--code-bg:#f4f6f8}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);line-height:1.7;font-size:15px}
+.wrap{display:grid;grid-template-columns:230px 1fr;max-width:1180px;margin:0 auto;padding:24px 16px}
+nav.toc{position:sticky;top:16px;align-self:start;font-size:13px;padding-right:16px;border-right:1px solid var(--rule);max-height:calc(100vh - 32px);overflow-y:auto}
+nav.toc h2{font-size:12px;color:var(--mute);text-transform:uppercase;margin:0 0 8px;letter-spacing:0.05em}
+nav.toc ol{list-style:none;padding:0;margin:0}
+nav.toc li{margin:5px 0}
+nav.toc a{color:var(--ink);text-decoration:none}
+nav.toc a:hover{color:var(--accent);text-decoration:underline}
+main{padding-left:28px;min-width:0}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-0.01em}
+h2{font-size:20px;margin:32px 0 10px;padding-top:12px;border-top:1px solid var(--rule)}
+h3{font-size:16px;margin:20px 0 8px;color:#222}
+p{margin:8px 0}
+.meta{color:var(--mute);font-size:13px;margin-bottom:16px}
+.callout{background:#fffae0;padding:10px 14px;border-left:3px solid #d4a017;font-size:0.94em;margin:14px 0;border-radius:0 4px 4px 0}
+.callout-blue{background:#f0f7ff;padding:10px 14px;border-left:3px solid var(--accent);font-size:0.94em;margin:14px 0;border-radius:0 4px 4px 0}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+th,td{border-bottom:1px solid var(--rule);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#f6f8fa;font-weight:600;font-size:12.5px;color:#333}
+td.center{text-align:center;font-weight:600;color:var(--accent)}
+code{background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:0.9em;font-family:"SF Mono",Menlo,Consolas,monospace}
+pre{background:var(--code-bg);padding:12px 14px;border-radius:6px;overflow-x:auto;font-size:13px;line-height:1.55;border:1px solid var(--rule)}
+pre code{background:none;padding:0}
+ul,ol{margin:6px 0 12px 22px;padding:0}
+li{margin:4px 0}
+li p{margin:4px 0}
+blockquote{border-left:3px solid var(--rule);margin:8px 0;padding:4px 14px;color:#444;font-size:13.5px;background:#fafbfc}
+strong{color:#000}
+em{color:#555}
+.chip{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11.5px;font-weight:600;background:var(--chip-bg);color:#333;margin-left:6px;vertical-align:middle}
+.chip-new{background:#d4f4dd;color:#1a6c2e}
+.chip-warn{background:#fff3cd;color:#7a5b00}
+.chip-del{background:#fcd7d7;color:#8a1c1c}
+hr{border:0;border-top:1px solid var(--rule);margin:24px 0}
+.grid-a-b{display:grid;grid-template-columns:60px 1fr 1fr;gap:0;margin:8px 0}
+.grid-a-b > div{padding:10px 12px;border-bottom:1px solid var(--rule);font-size:13.5px}
+.grid-a-b .h{background:#f6f8fa;font-weight:600;font-size:12.5px}
+.grid-a-b .k{font-weight:700;text-align:center;background:#f9f9f9}
+.footer{color:var(--mute);font-size:12.5px;margin-top:32px;padding-top:14px;border-top:1px solid var(--rule)}
+@media (max-width:820px){.wrap{grid-template-columns:1fr}nav.toc{position:static;border-right:0;border-bottom:1px solid var(--rule);max-height:none;padding-right:0;margin-bottom:16px}main{padding-left:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc">
+<h2>目錄</h2>
+<ol>
+  <li><a href="#delta">§0 v0.2 變更摘要</a></li>
+  <li><a href="#goals">§1 目標與非目標</a></li>
+  <li><a href="#arch">§2 架構總覽</a></li>
+  <li><a href="#compute">§3 計算腳本</a>
+    <ol style="padding-left:16px">
+      <li><a href="#s31">3.1 位置與呼叫</a></li>
+      <li><a href="#s32">3.2 數據來源</a></li>
+      <li><a href="#s33">3.3 計算項目</a></li>
+      <li><a href="#s34">3.4 寬度公式</a></li>
+      <li><a href="#s35">3.5 區間推導</a></li>
+      <li><a href="#s36">3.6 降級模式</a></li>
+      <li><a href="#s37">3.7 JSON Schema</a></li>
+    </ol>
+  </li>
+  <li><a href="#skill">§4 SKILL.md 修改</a></li>
+  <li><a href="#hardrules">§5 硬規則</a></li>
+  <li><a href="#accept">§6 驗收</a></li>
+  <li><a href="#future">§7 未來版本</a></li>
+</ol>
+</nav>
+
+<main>
+<h1>Spec: price-zone — SMC 結構視角下的價格區間模組</h1>
+<p class="meta">版本:<strong>v0.2</strong>(草稿,尚未實作) ｜ 前版:v0.1(chat 靈感稿) ｜ 隸屬:<code>deep-research-stock</code> skill 擴充(新增報告 §8) ｜ 目標讀者:Claude Code(實作者) ｜ 日期:2026-07-08</p>
+
+<!-- §0 -->
+<h2 id="delta">§0 v0.2 相對 v0.1 的變更摘要<span class="chip chip-new">先讀這段</span></h2>
+
+<table>
+<tr><th style="width:40px">#</th><th style="width:35%">變更</th><th>為什麼</th></tr>
+<tr>
+  <td class="center">A</td>
+  <td><strong>§8 標題</strong>「技術結構與價格區間」→「<strong>SMC 結構視角下的價格區間</strong>」</td>
+  <td>BOS/CHoCH/FVG/eq H/L 是 Smart Money Concepts / ICT 學派方言,不是「客觀技術結構」。命名誠實化,日後加 EMA/MACD 等其他學派不會 schema 衝突。</td>
+</tr>
+<tr>
+  <td class="center">B</td>
+  <td>區間寬度公式改用「<strong>ATR 為主,價格 % 為地板/天花板</strong>」</td>
+  <td><code>0.5×ATR</code> 對 $985 + β 2.14 的 MU 會產生 ~10% 寬的區間,失去「參考位」意義。加入 0.75%–2.5% 邊界,讓區間永遠在螢幕上大致 1.5–5%。</td>
+</tr>
+<tr>
+  <td class="center">C</td>
+  <td>逆勢(countertrend)時 <code>buy_zone = null</code>,改輸出 <code>buy_zone_pending</code></td>
+  <td>原本「畫區間 + 貼警語」讀者一眼看到區間、警語當耳邊風。改為明確不輸出,並提供「要看到什麼價位才會產生買區」的 trigger price。</td>
+</tr>
+<tr>
+  <td class="center">D</td>
+  <td><strong>Fractal look-ahead 明確處理</strong>:最新 3 根 K 標 pending,不得當 zone basis</td>
+  <td>v0.1 未定義。無此規則會出現「昨天 K 被判定為 swing、今天 K 打破 → basis 消失」的 UX 惡夢。</td>
+</tr>
+<tr>
+  <td class="center">E</td>
+  <td>JSON 加 <code>schema_version: "v0.2"</code></td>
+  <td>為「欄位可增不可減」政策提供版本座標。</td>
+</tr>
+<tr>
+  <td class="center">F</td>
+  <td>驗收 §6 加 <strong>golden-file 回歸測試</strong></td>
+  <td>三次跑 byte-identical 只能防「同 run 內」漂移,防不了演算法自身悄悄改。</td>
+</tr>
+<tr>
+  <td class="center">G</td>
+  <td>v0.1 的 <code>volume_nodes</code> <span class="chip chip-del">移除</span></td>
+  <td>24 bins × 12mo 的 1D volume-at-price 訊號密度不高、又混合近遠期。v0.2 若加,直接時間加權。</td>
+</tr>
+<tr>
+  <td class="center">H</td>
+  <td>§5 新增兩條硬規則:<code>buy_zone.high &lt; price</code> 標「等待回檔」(<code>needs_pullback=true</code>);<code>sell_zone.high &lt; price</code> 直接 null</td>
+  <td>防止「已破結構」被當成有效區間輸出。(v0.2 首稿誤寫為 <code>buy_zone.low &gt; price</code>,語意錯誤,已於實作時更正)</td>
+</tr>
+</table>
+
+<!-- §1 -->
+<h2 id="goals">§1 目標與非目標</h2>
+
+<h3>目標</h3>
+<p>為 <code>deep-research-stock</code> 報告的每個 ticker 產出:</p>
+<ol>
+  <li>日線級別的<strong>結構判定</strong>(趨勢方向、最近 BOS/CHoCH、premium/discount 位置)</li>
+  <li><strong>買入參考區間</strong>與<strong>賣出/減碼參考區間</strong>(帶邏輯依據,非單一價位)</li>
+  <li><strong>失效條件</strong>(跌破/突破哪個價位代表區間作廢)</li>
+  <li>流動性池標註(equal lows/highs 掃損風險)</li>
+</ol>
+
+<h3>非目標(明確排除)</h3>
+<ul>
+  <li>❌ 不做 1H 以下級別的進場點(僅日線波段參考)</li>
+  <li>❌ 不做自動下單、不接交易所 API</li>
+  <li>❌ 不輸出「建議買入/賣出」等指令性措辭</li>
+  <li>❌ LLM 不得目測 K 線自行發明價位(見 §5)</li>
+  <li>❌ v0.1 <strong>不做 volume profile</strong>(見變更 G)</li>
+</ul>
+
+<!-- §2 -->
+<h2 id="arch">§2 架構總覽</h2>
+
+<pre>ticker
+  │
+  ▼
+[compute_zones.py]  ← 純 Python,確定性計算,不經 LLM
+  │  輸入:yfinance 日線 OHLCV(12mo)
+  │  輸出:結構 JSON(swing points、趨勢、FVG、區間、失效價...)
+  ▼
+[LLM(skill 內)]
+  │  只讀 JSON,負責文字詮釋與 narrative
+  ▼
+報告 §8「SMC 結構視角下的價格區間」</pre>
+
+<div class="callout-blue">
+<strong>核心分工:</strong>可規則化的全部交給 Python;LLM 只做解讀,不做計算。同一份數據跑 N 次,區間數字必須完全一致。
+</div>
+
+<!-- §3 -->
+<h2 id="compute">§3 計算腳本 <code>compute_zones.py</code></h2>
+
+<h3 id="s31">3.1 位置與呼叫方式</h3>
+<ul>
+  <li>路徑:<code>finance-workflows/scripts/compute_zones.py</code></li>
+  <li>環境:沿用 <code>finance-workflows/mcp/.venv</code>(需補裝 <code>yfinance</code>)</li>
+  <li>CLI:<pre>.venv/bin/python compute_zones.py TICKER [--period 12mo] [--out zones/TICKER.json]</pre></li>
+  <li>在 skill 流程中由 Bash tool 呼叫;預設寫入 <code>finance-workflows/reports/deep-stock-research/_zones/&lt;DATE&gt;/&lt;TICKER&gt;.json</code></li>
+</ul>
+
+<h3 id="s32">3.2 數據來源</h3>
+<ul>
+  <li><code>yfinance.Ticker(ticker).history(period="12mo", interval="1d", auto_adjust=True)</code></li>
+  <li>最少 60 根日 K;不足時進入<strong>降級模式</strong>(見 §3.6)</li>
+  <li><strong>穩定性</strong>:index 只保留到日期,不帶時區,避免因 yfinance 分秒級微幅修訂造成 golden-file 誤 diff</li>
+</ul>
+
+<h3 id="s33">3.3 計算項目(全部為確定性規則)</h3>
+
+<table>
+<tr><th>項目</th><th>定義</th><th>參數</th></tr>
+<tr><td>Swing High/Low</td><td>fractal:左右各 N 根皆更低(高)</td><td><code>N = 3</code></td></tr>
+<tr><td><strong>最新 3 根 K</strong> <span class="chip chip-new">v0.2 新增</span></td><td>標記 <code>pending</code>,不得成為 zone basis</td><td>—</td></tr>
+<tr><td>趨勢判定</td><td>最近 4 個<strong>已確認</strong> swing 的 HH/HL vs LH/LL 序列</td><td>—</td></tr>
+<tr><td>BOS</td><td>收盤價突破最近同向 swing 極值</td><td>以收盤價認定</td></tr>
+<tr><td>CHoCH</td><td>收盤價突破最近<strong>反向</strong> swing 極值</td><td>以收盤價認定</td></tr>
+<tr><td>Equal Lows/Highs</td><td>≥2 個 swing 極值落在 tolerance 內</td><td><code>tolerance = 0.3 × ATR(14)</code></td></tr>
+<tr><td>Daily FVG</td><td>三根 K:K1 高 &lt; K3 低(bullish)或反之</td><td>只保留未回補的</td></tr>
+<tr><td>ATR</td><td>Wilder ATR</td><td><code>period = 14</code></td></tr>
+<tr><td>Range 與均衡</td><td>近 120 根內最高/最低,50% 為 equilibrium</td><td>premium = 上半,discount = 下半</td></tr>
+</table>
+
+<h3 id="s34">3.4 區間寬度公式 <span class="chip chip-new">v0.2 修訂</span></h3>
+
+<pre>half_width = min(
+    max(0.5 * atr14, 0.0075 * price),   # 地板:price 的 0.75%
+    0.025 * price                       # 天花板:price 的 2.5%
+)
+# 白話:0.5 ATR 為主;低價低波動時 0.75% 保底,高價高波動時 2.5% 封頂
+# 結果:區間總寬度永遠落在 price 的 1.5–5%</pre>
+
+<h3 id="s35">3.5 區間推導規則</h3>
+
+<p><strong>買入參考區(<code>buy_zone</code>)</strong> — 需同時符合三條件才輸出:</p>
+<ol>
+  <li>當前趨勢為 <code>up</code> 或 <code>range</code>(<strong>逆勢不輸出</strong>,改走 <code>buy_zone_pending</code>)</li>
+  <li>存在有效 basis:未回補 bullish FVG 或<strong>已確認</strong>的 HL swing low(最新 3 根 pending 不算)</li>
+  <li>basis 位於 discount zone(equilibrium 以下)</li>
+</ol>
+
+<pre># v0.2.1 修訂:zone.low 錨定在失效價,往上延伸
+# 保證 zone.low == invalidation_price(不再出現「失效價在區間內部」的語意矛盾)
+
+if basis == FVG:
+    buy_zone.low  = FVG.bottom
+    buy_zone.high = max(FVG.top, buy_zone.low + 2 * half_width)
+elif basis == swing_low:
+    buy_zone.low  = swing_low_price
+    buy_zone.high = swing_low_price + 2 * half_width
+
+invalidation_price = buy_zone.low</pre>
+
+<ul>
+  <li>若 <code>buy_zone.high &lt; current_price</code>(zone 位於現價之下):標註 <code>"needs_pullback": true</code>,§8 敘述必須用「等待回檔到 xx–xx」而非「當前買入區」</li>
+  <li>若 <code>buy_zone.low &gt; current_price</code>(zone 位於現價之上,異常):<code>warnings</code> 加 <code>"buy_zone_above_price_anomaly"</code></li>
+  <li>若區間下方 <code>1.5×ATR</code> 內存在 equal lows → JSON 標 <code>"liquidity_below"</code>,§8 必寫「下方 X 元有流動性池,存在被掃風險」</li>
+</ul>
+
+<p><strong>逆勢時的 <code>buy_zone_pending</code></strong> <span class="chip chip-new">v0.2 新增</span></p>
+
+<pre>"buy_zone": null,
+"buy_zone_pending": {
+  "reason": "downtrend — 目前無有效買區,需先 CHoCH 反轉",
+  "watch_price_for_choch": 0.0,
+  "watch_rule": "daily close above 0.0"
+}</pre>
+
+<p><strong>賣出/減碼參考區(<code>sell_zone</code>)</strong> — 需同時符合:</p>
+<ol>
+  <li>存在有效 basis:equal highs 或<strong>已確認</strong>的 swing high</li>
+  <li>basis 位於 premium zone</li>
+</ol>
+
+<pre># v0.2.1 修訂:sell_zone 為 buy_zone 的鏡像
+sell_zone.high = invalidation_price  # equal_highs 或 swing_high
+sell_zone.low  = sell_zone.high − 2 * half_width</pre>
+
+<ul>
+  <li>若 <code>sell_zone.high &lt; current_price</code>:<strong>直接 null</strong> 且 <code>warnings</code> 加 <code>"structure_already_broken_above"</code></li>
+</ul>
+
+<p><strong>失效條件(<code>invalidation</code>)</strong>:</p>
+<ul>
+  <li>買區失效價 = 買區依據的 swing low 收盤跌破</li>
+  <li>賣區失效價 = 賣區依據的 swing high 收盤突破</li>
+  <li>JSON 必須包含 <code>invalidation_price</code> 與 <code>invalidation_rule</code>(機器可讀)</li>
+</ul>
+
+<h3 id="s36">3.6 降級模式(新股/數據不足)</h3>
+
+<p>觸發:日 K &lt; 60 根。輸出改為:</p>
+<ul>
+  <li><code>"mode": "degraded"</code></li>
+  <li>只提供:IPO 價、歷史最高/最低、當前價在歷史區間的百分位、ATR</li>
+  <li><strong>不輸出</strong> <code>buy_zone</code> / <code>sell_zone</code></li>
+  <li>報告 §8 寫明:「上市未滿 60 個交易日,結構樣本不足,僅提供位置參考,不產出買賣區間。」</li>
+</ul>
+
+<h3 id="s37">3.7 輸出 JSON Schema</h3>
+
+<pre>{
+  "schema_version": "v0.2",
+  "ticker": "NVDA",
+  "as_of": "2026-07-08",
+  "as_of_confirmed_swing": "2026-07-03",
+  "mode": "full",
+  "price": 0.0,
+  "atr14": 0.0,
+  "trend": {"direction": "up|down|range", "basis": "HH/HL x2 since 2026-05-14"},
+  "last_bos": {"price": 0.0, "date": "", "direction": "up|down"},
+  "last_choch": {"price": 0.0, "date": "", "direction": "up|down"},
+  "range": {"high": 0.0, "low": 0.0, "equilibrium": 0.0, "position": "premium|discount"},
+  "equal_lows": [{"price": 0.0, "touches": 2}],
+  "equal_highs": [],
+  "unfilled_fvg": [{"type": "bullish", "top": 0.0, "bottom": 0.0, "date": ""}],
+  "buy_zone": {
+    "low": 0.0, "high": 0.0,
+    "basis": "unfilled bullish FVG 2026-06-20",
+    "needs_pullback": false,
+    "liquidity_below": {"exists": true, "price": 0.0},
+    "invalidation_price": 0.0,
+    "invalidation_rule": "daily close below 0.0"
+  },
+  "buy_zone_pending": null,
+  "sell_zone": null,
+  "warnings": ["structure_already_broken_above"]
+}</pre>
+
+<div class="callout">
+<strong>Schema 規則</strong>:<br>
+• <code>schema_version</code> 必填;版本升級時舊消費者仍能讀<br>
+• 欄位可增不可減;算不出來填 <code>null</code> 並在 <code>warnings</code> 註明<br>
+• <code>buy_zone</code> 與 <code>buy_zone_pending</code> <strong>互斥</strong>(其一必為 null)
+</div>
+
+<!-- §4 -->
+<h2 id="skill">§4 SKILL.md 修改點</h2>
+
+<h3>4.1 Stage 2 每個 ticker 新增步驟</h3>
+<ul>
+  <li><strong>Tier A / Tier B / ETF</strong> 一律執行 <code>compute_zones.py &lt;ticker&gt;</code> 並讀 JSON</li>
+  <li>腳本便宜(&lt; 3 秒),ETF 純 price action 反而更適合此模組</li>
+</ul>
+
+<h3>4.2 報告新增 §8「SMC 結構視角下的價格區間」</h3>
+
+<p><strong>Tier A 完整版</strong>(150–250 字 + 表格):</p>
+<ul>
+  <li>結構敘述:趨勢方向、最近 BOS/CHoCH、目前在 premium 還是 discount</li>
+  <li>買入參考區 + basis + 流動性風險(或 <code>buy_zone_pending</code> 的 trigger)</li>
+  <li>賣出/減碼參考區 + basis</li>
+  <li><strong>失效條件</strong>(獨立一行,加粗)</li>
+</ul>
+
+<p><strong>Tier B 精簡版</strong>(三行):</p>
+<pre>趨勢:下跌(LH/LL)｜位置:discount
+買區:暫無(需 daily close &gt; xx 觸發 CHoCH)
+減碼:xx–xx｜失效:收盤 &gt; xx</pre>
+
+<p><strong>降級模式</strong>:一行說明 + 位置百分位,不給區間。</p>
+
+<h3>4.3 §7 vs §8 銜接</h3>
+<p>§7 的「方向 + 信心」若與 §8 的趨勢判定矛盾,<strong>不得隱藏</strong>,必須明寫:</p>
+<blockquote>「基本面與 SMC 結構目前分歧,傾向等待 §8 失效條件解除。」</blockquote>
+
+<!-- §5 -->
+<h2 id="hardrules">§5 硬規則(faithfulness 延伸)</h2>
+
+<ol>
+  <li><strong>報告中出現的所有價位數字,必須存在於 JSON 中。</strong> LLM 不得四捨五入以外地修改。</li>
+  <li>每個區間必須附 <code>basis</code> 與 <code>invalidation</code>,缺一不給區間。</li>
+  <li>所有區間文字一律標註「SMC 技術參考區間,非投資建議」(HTML footer 統一標一次)。</li>
+  <li>措辭禁令:禁止「建議買入」「必漲」「強力支撐」;equal lows 一律稱「流動性池」並附掃損風險說明。</li>
+  <li>腳本失敗 → §8 標「技術數據不可用,本次跳過」,不影響其餘章節。</li>
+  <li><span class="chip chip-new">v0.2 新增</span> <code>buy_zone.high &lt; price</code> 時(zone 位於現價之下),措辭必為「等待回檔到 xx–xx」;若寫成「當前買區」為 spec 違規。<code>buy_zone.low &gt; price</code> 為異常,標 warning。</li>
+  <li><span class="chip chip-new">v0.2 新增</span> <code>sell_zone.high &lt; price</code> 時,直接 null 不寫;不得以「近期壓力位」等模糊措辭包裝已破結構。</li>
+  <li>沿用主 skill 規則:不 spawn <code>claude -p</code>、不新增 <code>.mcp.json</code> 以外的 MCP。yfinance 是 Python 套件,允許直接在腳本內使用。</li>
+</ol>
+
+<!-- §6 -->
+<h2 id="accept">§6 驗收標準</h2>
+
+<ul>
+  <li>☐ <code>compute_zones.py NVDA</code> 連跑 3 次,JSON 逐 byte 一致(除 <code>as_of</code>)</li>
+  <li>☐ <span class="chip chip-new">v0.2 新增</span> golden-file 回歸測試 — 固定 ticker + 固定歷史 as_of 日期(用快照 CSV 而非 live yfinance),期望 JSON 存為 fixture</li>
+  <li>☐ 日 K &lt; 60 根的 ticker 正確進入降級模式</li>
+  <li>☐ ETF(如 IVV)可正常產出區間</li>
+  <li>☐ 趨勢下跌的票,<code>buy_zone = null</code> 且 <code>buy_zone_pending</code> 提供 CHoCH trigger price</li>
+  <li>☐ equal lows 存在時,<code>liquidity_below</code> 正確標註且報告有掃損說明</li>
+  <li>☐ <code>buy_zone.low &gt; price</code> 時,報告措辭出現「等待回檔」</li>
+  <li>☐ <code>sell_zone</code> 若因結構已破而 null,<code>warnings</code> 明確標 <code>structure_already_broken_above</code></li>
+  <li>☐ 報告中每個價位都能在 JSON 中找到(寫個 grep 驗證腳本)</li>
+  <li>☐ 單一 ticker 全流程 &lt; 15 秒、新增 LLM token &lt; 1.5k</li>
+</ul>
+
+<!-- §7 -->
+<h2 id="future">§7 未來版本(不在 v0.2 範圍)</h2>
+
+<ul>
+  <li>1H 級別數據 + 多時間框架共振</li>
+  <li>Volume Profile(時間加權,非 v0.1 的 24-bin 平均)</li>
+  <li>區間回測:歷史區間 vs 後續走勢命中率(接 knowledge-graph)</li>
+  <li>Telegram 推播附區間摘要</li>
+  <li>SMC 以外的技術學派(EMA/MACD/RSI)並列 lens</li>
+</ul>
+
+<p class="footer">
+Spec draft · price-zone v0.2 · 2026-07-08 · 對應 markdown 版本:<code>docs/superpowers/specs/2026-07-08-price-zone-design.md</code>
+</p>
+
+</main>
+</div>
+</body>
+</html>
