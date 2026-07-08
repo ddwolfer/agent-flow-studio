@@ -420,9 +420,14 @@ def build_output(ticker: str, bars: list[Bar]) -> dict[str, Any]:
             invalidation = _r(basis["invalidation_price"])
             bz_low = invalidation
             if basis["kind"] == "fvg":
+                # v0.3.1: FVG has physical edges; do NOT ATR-expand beyond
+                # the FVG top. But when FVG is razor-thin (e.g. TSLA 2026-06-29
+                # was $0.18), impose a modest actionable-width floor so the
+                # zone is usable for order placement.
                 fvg_top = basis["extras"]["top"]
-                bz_high = _r(max(fvg_top, invalidation + 2 * hw))
-            else:  # swing_low
+                min_thick = max(0.25 * atr14, 0.008 * price)
+                bz_high = _r(max(fvg_top, invalidation + min_thick))
+            else:  # swing_low (single point; ATR needed to give it thickness)
                 bz_high = _r(invalidation + 2 * hw)
             needs_pullback = bz_high < price
             if bz_low > price:

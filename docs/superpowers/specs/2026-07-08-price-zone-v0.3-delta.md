@@ -1,7 +1,10 @@
 # Spec: price-zone v0.3 — delta from v0.2.1
 
-> 版本:v0.3(草稿,尚未實作)
-> 基礎:v0.2.1(spec: `2026-07-08-price-zone-design.md`,impl: `compute_zones.py` HEAD @ commit a91312d + 1de5fef)
+> 版本:v0.3.1(已實作,含 FVG-cap 修訂)
+> 基礎:v0.2.1(spec: `2026-07-08-price-zone-design.md`)
+> 修訂歷史:
+>  - v0.3(commit 0cfcb7c → 1fdc917):6 項變更
+>  - v0.3.1(此次):FVG-basis buy_zone 不再 ATR-撐開;加入 actionable-width 下限
 > 目標讀者:Claude Code(實作者)
 
 ---
@@ -225,6 +228,41 @@ def find_unfilled_fvg(bars: list[Bar], recent_bars_only: int = 90) -> list[dict]
 - ❌ 不動 wire-in(SKILL.md 主結構),只加 §5 硬規則的 4 條 H1-H4
 
 ---
+
+## 6.5 v0.3.1 patch:FVG-cap + min actionable width
+
+**問題:** v0.3 對 TSLA 產生假的 `zones_overlapping_pivotal` warning。追根究底,v0.2.1 的公式 `bz_high = max(FVG.top, invalidation + 2×half_width)` 對 FVG basis **強制 ATR 撐開**,產生 FVG 頂之上「憑空的」zone 高度,恰好與 sell zone 的 ATR 尾端重疊。
+
+**修訂:**
+
+```python
+if basis["kind"] == "fvg":
+    # FVG has physical edges; use FVG.top as ceiling.
+    # But guarantee actionable width when FVG is razor-thin.
+    fvg_top = basis["extras"]["top"]
+    min_thick = max(0.25 * atr14, 0.008 * price)
+    bz_high = _r(max(fvg_top, invalidation + min_thick))
+else:  # swing_low: 單點,天然需要 ATR 撐開
+    bz_high = _r(invalidation + 2 * hw)
+```
+
+**兩個原則:**
+1. FVG 有實體邊界 — 用 FVG.top,不加 2×hw 過度撐開
+2. 但 FVG 若薄至不 actionable(如 TSLA 2026-06-29 天然厚度 $0.18),用 `max(0.25×ATR, 0.008×price)` 作為最小可下單寬度下限
+
+**8 檔驗收(2026-07-08):**
+
+| Ticker | v0.3 buy | v0.3.1 buy | Δ width | overlap |
+|---|---|---|---|---|
+| TSLA | $379.12–$398.52 | $379.12–$384.01 | -75% | **消失** |
+| MU | $735.57–$782.89 | $735.57–$758.22 | -52% | 無 |
+| GOOG | $319.24–$329.88 | $319.24–$328.46 | -13% | 無 |
+| IVV | $687.98–$699.16 | $687.98–$695.62 | -32% | 無 |
+| NVDA | $189.66–$196.42 | $189.66–$195.74 | -10% | 無 |
+| NOW | $99.64–$104.96 | $99.64–$103.84 | -21% | 無 |
+| MSFT(swing_low)| unchanged | unchanged | 0 | 無 |
+
+所有 buy_zone 更貼近實體 basis,無假重疊。
 
 ## 7. 版本升級路徑
 
