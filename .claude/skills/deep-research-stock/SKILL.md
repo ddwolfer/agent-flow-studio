@@ -153,4 +153,8 @@ Tell the user:
 - **§8 faithfulness delta**: every price / basis / invalidation number in §8 MUST exist in the ticker's `_zones/<today>/<TICKER>.json`. LLM may **only** round/format for display, not derive or fabricate. Any price in §8 not present in the JSON is a spec violation.
 - **§8 language禁令**: forbid 「建議買入 / 必漲 / 強力支撐」; equal lows 一律稱「流動性池」並附掃損說明。
 - **§7 vs §8 分歧強制揭露**: if §7's direction disagrees with §8's `trend.direction` (e.g. §7 建設性偏多 + §8 趨勢 down),DO NOT hide it. Write in the ticker's summary: 「基本面(§7)與 SMC 結構(§8)目前分歧,傾向等待 §8 失效條件解除」— 分歧本身是重要訊號,隱藏是 spec 違規。
+- **§8 H1(v0.3)** — If `buy_zone` / `sell_zone` is null and the corresponding `_note` field has text, §8 MUST display that note (never silent-skip). GOOG/IVV 典型:賣區 null + note 說明「所有 premium swing high 皆已被突破」。
+- **§8 H2(v0.3)** — If `warnings` contains `zones_overlapping_pivotal`, §8 MUST show an independent warning block BEFORE the zone descriptions: 「⚠️ 買賣區重疊(pivotal state):demand/supply 短兵相接,方向未明;下一根 K 的收盤方向為關鍵訊號。」TSLA 典型。
+- **§8 H3(v0.3)** — If `buy_zone.price_in_zone == true` or `sell_zone.price_in_zone == true`,§8 措辭 MUST use「⚠️ 現價已在 X 區內」strong voice,not「等待回檔」or「持續觀察」passive voice. NOW/TSLA 典型。
+- **§8 H4(v0.3)** — `intraday_stress_level` 僅 Tier A 呈現(節省 Tier B token);呈現時 MUST label as「盤中壓力測試位」以區隔於 `invalidation_price`,避免讀者混淆兩者為同一線。
 - Knowledge-graph: after writing the report, optionally record a single `pattern/observation` per Tier A ticker if a non-obvious finding emerged (e.g. unusual debt structure, surprising margin trend, novel risk language in 10-K, §7/§8 分歧持續數週). Do not flood the graph with routine snapshots.

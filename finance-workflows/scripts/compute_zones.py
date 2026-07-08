@@ -24,13 +24,29 @@ from typing import Any
 
 import yfinance as yf
 
-SCHEMA_VERSION = "v0.2"
+SCHEMA_VERSION = "v0.3"
 FRACTAL_N = 3
 ATR_PERIOD = 14
 RANGE_WINDOW = 120
 EQ_TOLERANCE_ATR_MULT = 0.3
 LIQUIDITY_LOOKBACK_ATR_MULT = 1.5
 MIN_BARS_FOR_FULL_MODE = 60
+FVG_RECENT_BARS = 90                  # v0.3 §2.6: FVG time decay window
+STRESS_ATR_MULT = 0.3                 # v0.3 §2.5: intraday_stress_level offset
+
+# v0.3 §2.2 warning → 中文說明 mapping
+ZONE_NULL_NOTES = {
+    "structure_already_broken_above":
+        "無 SMC 減碼目標:所有 premium swing high 皆已被突破,需等待新 swing high 形成",
+    "no_valid_sell_basis_in_premium":
+        "無 SMC 減碼目標:premium 區無 confirmed swing high 或 equal highs",
+    "no_valid_buy_basis_in_discount":
+        "無 SMC 買進目標:discount 區無未回補 bullish FVG 或 confirmed swing low",
+    "buy_zone_above_price_anomaly":
+        "異常:buy_zone.low 高於現價,基準邏輯需人工檢視",
+    "choch_functionally_fired_but_swing_structure_still_down":
+        "趨勢分歧:swing 結構仍為 down,但價格已高於所有 confirmed swing high;CHoCH 可能已功能性觸發",
+}
 
 
 # ── data class ─────────────────────────────────────────────────────────────
@@ -227,10 +243,15 @@ def equal_clusters(
 
 
 # ── unfilled FVG ───────────────────────────────────────────────────────────
-def find_unfilled_fvg(bars: list[Bar]) -> list[dict]:
-    """Detect bullish/bearish 3-bar FVGs and keep only those not yet retraced."""
+def find_unfilled_fvg(bars: list[Bar], recent_bars: int = FVG_RECENT_BARS) -> list[dict]:
+    """Detect bullish/bearish 3-bar FVGs and keep only those not yet retraced.
+
+    v0.3 §2.6: only scan the most recent `recent_bars` bars (default 90).
+    Old FVGs are typically irrelevant to daily swing zones."""
     out = []
-    for i in range(2, len(bars)):
+    # Compute the earliest bar index we care about (need i >= 2 for k1)
+    start_idx = max(2, len(bars) - recent_bars) if len(bars) > recent_bars else 2
+    for i in range(start_idx, len(bars)):
         k1, k3 = bars[i - 2], bars[i]
         # bullish FVG: k1.high < k3.low → gap [k1.high, k3.low]
         if k1.high < k3.low:
@@ -369,10 +390,12 @@ def build_output(ticker: str, bars: list[Bar]) -> dict[str, Any]:
     buy_zone = None
     buy_zone_pending = None
     if trend_dir == "down":
-        # Countertrend: no buy_zone; provide CHoCH trigger
+        # v0.3 §2.1 fix: pick swing high STRICTLY ABOVE current price
+        # (a swing high already below price has been broken — cannot be
+        #  the CHoCH trigger any longer).
         recent_high = None
         for s in reversed(swings):
-            if s.confirmed and s.kind == "H":
+            if s.confirmed and s.kind == "H" and s.price > price:
                 recent_high = s
                 break
         if recent_high:
@@ -382,18 +405,18 @@ def build_output(ticker: str, bars: list[Bar]) -> dict[str, Any]:
                 "watch_rule": f"daily close above {_r(recent_high.price)}",
             }
         else:
+            # No swing high above current price → CHoCH may have functionally
+            # fired even though swing sequence still reads as down.
             buy_zone_pending = {
-                "reason": "downtrend — 目前無有效買區,需先 CHoCH 反轉",
+                "reason": "downtrend by swing structure, but price already above all confirmed swing highs — CHoCH may have functionally fired",
                 "watch_price_for_choch": None,
                 "watch_rule": None,
             }
-            warnings.append("no_confirmed_swing_high_for_choch_trigger")
+            warnings.append("choch_functionally_fired_but_swing_structure_still_down")
     else:
         basis = pick_buy_basis(swings, unfilled_fvg, r_eq, price)
         if basis:
-            # v0.2.1 fix: anchor zone.low to the invalidation level.
-            # For FVG basis: zone = FVG itself (extend upward if thinner than 2×hw).
-            # For swing_low basis: zone starts at swing low, extends up by 2×hw.
+            # v0.2.1: anchor zone.low to invalidation level.
             invalidation = _r(basis["invalidation_price"])
             bz_low = invalidation
             if basis["kind"] == "fvg":
@@ -401,19 +424,23 @@ def build_output(ticker: str, bars: list[Bar]) -> dict[str, Any]:
                 bz_high = _r(max(fvg_top, invalidation + 2 * hw))
             else:  # swing_low
                 bz_high = _r(invalidation + 2 * hw)
-            # needs_pullback: zone lies BELOW current price → wait for retrace
             needs_pullback = bz_high < price
             if bz_low > price:
                 warnings.append("buy_zone_above_price_anomaly")
             liq = check_liquidity_below(bz_low, eq_lows, atr14)
+            # v0.3 §2.3: price_in_zone; §2.5: intraday_stress_level
+            stress = _r(invalidation - STRESS_ATR_MULT * atr14)
             buy_zone = {
                 "low": bz_low,
                 "high": bz_high,
                 "basis": basis["text"],
                 "needs_pullback": needs_pullback,
+                "price_in_zone": bz_low <= price <= bz_high,
                 "liquidity_below": liq,
                 "invalidation_price": invalidation,
                 "invalidation_rule": f"daily close below {invalidation}",
+                "intraday_stress_level": stress,
+                "intraday_stress_rule": f"intraday low <= {stress} without daily close below {invalidation}",
             }
         else:
             warnings.append("no_valid_buy_basis_in_discount")
@@ -428,15 +455,42 @@ def build_output(ticker: str, bars: list[Bar]) -> dict[str, Any]:
         if sz_high < price:
             warnings.append("structure_already_broken_above")
         else:
+            # v0.3 §2.3 + §2.5
+            stress_s = _r(invalidation_s + STRESS_ATR_MULT * atr14)
             sell_zone = {
                 "low": sz_low,
                 "high": sz_high,
                 "basis": sbasis["text"],
+                "price_in_zone": sz_low <= price <= sz_high,
                 "invalidation_price": invalidation_s,
                 "invalidation_rule": f"daily close above {invalidation_s}",
+                "intraday_stress_level": stress_s,
+                "intraday_stress_rule": f"intraday high >= {stress_s} without daily close above {invalidation_s}",
             }
     else:
         warnings.append("no_valid_sell_basis_in_premium")
+
+    # v0.3 §2.4: overlap detection
+    if buy_zone and sell_zone and buy_zone["high"] > sell_zone["low"]:
+        warnings.append("zones_overlapping_pivotal")
+
+    # v0.3 §2.2: derive buy_zone_note / sell_zone_note from warnings
+    def _note_for(zone_type: str) -> str | None:
+        if zone_type == "buy" and buy_zone is not None:
+            return None
+        if zone_type == "sell" and sell_zone is not None:
+            return None
+        relevant = {
+            "buy": ["no_valid_buy_basis_in_discount", "buy_zone_above_price_anomaly",
+                    "choch_functionally_fired_but_swing_structure_still_down"],
+            "sell": ["no_valid_sell_basis_in_premium", "structure_already_broken_above"],
+        }[zone_type]
+        for w in warnings:
+            if w in relevant and w in ZONE_NULL_NOTES:
+                return ZONE_NULL_NOTES[w]
+        return None
+    buy_zone_note = _note_for("buy")
+    sell_zone_note = _note_for("sell")
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -455,8 +509,10 @@ def build_output(ticker: str, bars: list[Bar]) -> dict[str, Any]:
         "equal_highs": eq_highs,
         "unfilled_fvg": unfilled_fvg,
         "buy_zone": buy_zone,
+        "buy_zone_note": buy_zone_note,
         "buy_zone_pending": buy_zone_pending,
         "sell_zone": sell_zone,
+        "sell_zone_note": sell_zone_note,
         "warnings": warnings,
     }
 
