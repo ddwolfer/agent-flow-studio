@@ -14,6 +14,8 @@ Data sources (all keyless, all JSON or CSV):
      calendar" with the next 10 days of auction schedule.
   4. DefiLlama stablecoins — USDT + USDC circulating + 24h Δ. Source of
      crypto on-ramp liquidity (proxy for institutional bid).
+  5. TWSE 三大法人 — daily net buy/sell by 外資 / 投信 / 自營商.
+     Probes back up to 3 business days to skip weekends + TW holidays.
 
 Output shape (top-level keys):
   generated_at_utc: ISO timestamp
@@ -22,6 +24,13 @@ Output shape (top-level keys):
   cboe_vix:        {"VIX": {...}, "VIX9D": {...}, "VIX3M": {...}}
   treasury_auctions: {"auctions": [...]}
   stablecoins:     {"stablecoins": [...], "usdt_usdc_combined_delta_24h": <num>}
+  twse_three_investors: {"as_of_date": "YYYYMMDD", "unit": "TWD 億",
+                         "foreign_net_billion_twd": ...,
+                         "invtrust_net_billion_twd": ...,
+                         "prop_dealer_self_net_billion_twd": ...,
+                         "prop_dealer_hedge_net_billion_twd": ...,
+                         "prop_dealer_combined_net_billion_twd": ...,
+                         "total_net_billion_twd": ...}
 
 Usage:
   python fetch_extras.py --output /path/to/extras.json
@@ -36,6 +45,7 @@ _CBOE = ("https://cdn.cboe.com/api/global/us_indices/daily_prices/"
 _TREAS = ("https://api.fiscaldata.treasury.gov/services/api/fiscal_service/"
           "v1/accounting/od/upcoming_auctions")
 _STABLECOINS = "https://stablecoins.llama.fi/stablecoins"
+_TWSE_3INV = "https://www.twse.com.tw/rwd/zh/fund/BFI82U"
 
 _DEFAULT_TIMEOUT = 12.0
 
@@ -176,6 +186,77 @@ def fetch_stablecoin_supply(timeout: float = _DEFAULT_TIMEOUT) -> dict:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+# ── 6. TWSE 三大法人買賣金額 ─────────────────────────────────────────────────
+def _twse_probe_dates(today: datetime.date, back: int = 3):
+    """Yield up to `back` most-recent weekday YYYYMMDD strings, walking
+    backwards from today - 1. Doesn't know about TW holidays — the caller
+    keeps probing until the endpoint returns non-empty data."""
+    d = today - datetime.timedelta(days=1)
+    yielded = 0
+    max_walk = back + 7  # bail out after 10 days of scan to be safe
+    while yielded < back and max_walk > 0:
+        if d.weekday() < 5:               # Mon-Fri
+            yield d.strftime("%Y%m%d")
+            yielded += 1
+        d -= datetime.timedelta(days=1)
+        max_walk -= 1
+
+
+def fetch_twse_three_investors(today: datetime.date | None = None,
+                               timeout: float = _DEFAULT_TIMEOUT) -> dict:
+    """TWSE daily 三大法人買賣金額 in NT$ billion (億).
+
+    Probes back up to 3 business days to skip weekends + TW holidays.
+    Returns {as_of_date, unit, foreign_net_billion_twd, invtrust_...,
+    prop_dealer_self_..., prop_dealer_hedge_..., prop_dealer_combined_...,
+    total_...}. All amounts are net buy (positive = 淨買超, negative =
+    淨賣超), converted from raw TWD by ÷ 1e8 and rounded to 2 decimals."""
+    _NAME_MAP = {
+        "自營商(自行買賣)":         "prop_dealer_self",
+        "自營商(避險)":              "prop_dealer_hedge",
+        "投信":                      "invtrust",
+        "外資及陸資(不含外資自營商)": "foreign",
+        "合計":                      "total",
+    }
+    today = today or datetime.date.today()
+    tries: list[str] = []
+    try:
+        for date_str in _twse_probe_dates(today, back=3):
+            tries.append(date_str)
+            with httpx.Client(timeout=timeout) as c:
+                r = c.get(_TWSE_3INV, params={
+                    "dayDate": date_str,
+                    "type": "day",
+                    "response": "json",
+                })
+            if r.status_code != 200:
+                continue
+            j = r.json()
+            if j.get("stat") != "OK" or not j.get("data"):
+                continue
+            out: dict = {"as_of_date": date_str, "unit": "TWD 億"}
+            for row in j["data"]:
+                if not isinstance(row, list) or len(row) < 4:
+                    continue
+                name = row[0]
+                if name not in _NAME_MAP:
+                    continue
+                try:
+                    net_twd = float(str(row[3]).replace(",", ""))
+                except ValueError:
+                    continue
+                out[_NAME_MAP[name] + "_net_billion_twd"] = round(net_twd / 1e8, 2)
+            # combined dealer = self + hedge (matching how analysts cite it)
+            self_v = out.get("prop_dealer_self_net_billion_twd")
+            hedge_v = out.get("prop_dealer_hedge_net_billion_twd")
+            if self_v is not None and hedge_v is not None:
+                out["prop_dealer_combined_net_billion_twd"] = round(self_v + hedge_v, 2)
+            return out
+        return {"error": f"stat!=OK for all probed dates: {tries}"}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 # ── orchestration ────────────────────────────────────────────────────────────
 def collect_all() -> dict:
     """Run every fetcher independently. Each failure is isolated in its own
@@ -198,6 +279,7 @@ def collect_all() -> dict:
         },
         "treasury_auctions": fetch_treasury_auctions(limit=10),
         "stablecoins": fetch_stablecoin_supply(),
+        "twse_three_investors": fetch_twse_three_investors(),
     }
 
 

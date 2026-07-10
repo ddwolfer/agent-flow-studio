@@ -152,6 +152,8 @@ def test_main_continues_when_individual_source_fails(tmp_path, monkeypatch):
                         lambda limit=10: {"auctions": []})
     monkeypatch.setattr(fx, "fetch_stablecoin_supply",
                         lambda: {"stablecoins": [], "usdt_usdc_combined_delta_24h": 0})
+    monkeypatch.setattr(fx, "fetch_twse_three_investors",
+                        lambda: {"error": "test-stub"})
     out = tmp_path / "extras.json"
     rc = fx.main(["--output", str(out)])
     assert rc == 0
@@ -159,3 +161,91 @@ def test_main_continues_when_individual_source_fails(tmp_path, monkeypatch):
     assert "error" in data["binance_funding"]["BTC"]
     # OI for BTC still surfaces
     assert data["binance_oi"]["BTC"]["open_interest_btc"] == 100.0
+
+
+# ── TWSE 三大法人買賣金額 ─────────────────────────────────────────────────────
+_TWSE_OK_RESPONSE = {
+    "stat": "OK",
+    "date": "20260709",
+    "title": "115年07月09日 三大法人買賣金額統計表",
+    "fields": ["單位名稱", "買進金額", "賣出金額", "買賣差額"],
+    "data": [
+        ["自營商(自行買賣)", "9,494,954,521", "11,531,142,442", "-2,036,187,921"],
+        ["自營商(避險)",      "27,743,223,050", "33,378,200,940", "-5,634,977,890"],
+        ["投信",              "30,231,840,066", "10,331,239,403", "19,900,600,663"],
+        ["外資及陸資(不含外資自營商)", "367,858,937,128", "415,111,753,557", "-47,252,816,429"],
+        ["外資自營商",         "0", "0", "0"],
+        ["合計",              "435,328,954,765", "470,352,336,342", "-35,023,381,577"],
+    ],
+}
+_TWSE_EMPTY = {"stat": "很抱歉，沒有符合條件的資料!"}
+
+
+def test_fetch_twse_three_investors_parses_all_categories(monkeypatch):
+    import datetime as dt
+    monkeypatch.setattr(httpx.Client, "get", _resp(json_body=_TWSE_OK_RESPONSE))
+    # Force today so probe date is deterministic (weekday: Thu 2026-07-09;
+    # today - 1 = Wed 2026-07-08, which is a weekday → first probe succeeds)
+    out = fx.fetch_twse_three_investors(today=dt.date(2026, 7, 9))
+    assert out["unit"] == "TWD 億"
+    assert out["as_of_date"] == "20260708"                  # today - 1
+    assert out["foreign_net_billion_twd"] == round(-47252816429 / 1e8, 2)
+    assert out["invtrust_net_billion_twd"] == round(19900600663 / 1e8, 2)
+    assert out["prop_dealer_self_net_billion_twd"] == round(-2036187921 / 1e8, 2)
+    assert out["prop_dealer_hedge_net_billion_twd"] == round(-5634977890 / 1e8, 2)
+    assert out["prop_dealer_combined_net_billion_twd"] == round(
+        (-2036187921 + -5634977890) / 1e8, 2
+    )
+    assert out["total_net_billion_twd"] == round(-35023381577 / 1e8, 2)
+
+
+def test_fetch_twse_three_investors_probes_back_on_empty(monkeypatch):
+    """First probe date returns empty (e.g. TW holiday), second succeeds."""
+    import datetime as dt
+    calls: list[str] = []
+    def stubby_get(self, url, params=None, **kw):
+        assert params is not None
+        d = params["dayDate"]
+        calls.append(d)
+        # first call returns empty, second returns OK
+        body = _TWSE_EMPTY if len(calls) == 1 else _TWSE_OK_RESPONSE
+        return httpx.Response(200, json=body,
+                              request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", stubby_get)
+    # today = Wed 2026-07-08 → probes 07-07 (Tue), 07-06 (Mon), 07-03 (Fri, skip weekend)
+    out = fx.fetch_twse_three_investors(today=dt.date(2026, 7, 8))
+    assert len(calls) == 2
+    assert out["as_of_date"] == calls[1]      # locked to the second (success) probe
+    assert "foreign_net_billion_twd" in out
+
+
+def test_fetch_twse_three_investors_skips_weekends(monkeypatch):
+    """today = Mon → probe should skip Sun/Sat and hit Fri first."""
+    import datetime as dt
+    calls: list[str] = []
+    def stubby_get(self, url, params=None, **kw):
+        calls.append(params["dayDate"])
+        return httpx.Response(200, json=_TWSE_OK_RESPONSE,
+                              request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", stubby_get)
+    # 2026-07-13 is a Monday
+    fx.fetch_twse_three_investors(today=dt.date(2026, 7, 13))
+    # First probe should be 07-10 (Fri), NOT 07-12 (Sun) or 07-11 (Sat)
+    assert calls[0] == "20260710"
+
+
+def test_fetch_twse_three_investors_reports_error_when_all_probes_fail(monkeypatch):
+    import datetime as dt
+    monkeypatch.setattr(httpx.Client, "get", _resp(json_body=_TWSE_EMPTY))
+    out = fx.fetch_twse_three_investors(today=dt.date(2026, 7, 9))
+    assert "error" in out
+    assert "stat!=OK" in out["error"]
+
+
+def test_fetch_twse_three_investors_never_raises_on_http_error(monkeypatch):
+    import datetime as dt
+    def boom(self, url, **kw):
+        raise httpx.ConnectError("down", request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx.Client, "get", boom)
+    out = fx.fetch_twse_three_investors(today=dt.date(2026, 7, 9))
+    assert "error" in out

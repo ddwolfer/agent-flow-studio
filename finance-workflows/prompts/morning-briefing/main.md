@@ -22,7 +22,10 @@
   "binance_oi":      {"BTC": {...}, "ETH": {...}},
   "cboe_vix":        {"VIX": {...}, "VIX9D": {...}, "VIX3M": {...}},
   "treasury_auctions": {"auctions": [...]},
-  "stablecoins":     {"stablecoins": [...], "usdt_usdc_combined_delta_24h": ...}
+  "stablecoins":     {"stablecoins": [...], "usdt_usdc_combined_delta_24h": ...},
+  "twse_three_investors": {"as_of_date": "YYYYMMDD", "unit": "TWD 億",
+                           "foreign_net_billion_twd": ..., "invtrust_...": ...,
+                           "prop_dealer_...": ..., "total_net_billion_twd": ...}
 }
 ```
 
@@ -72,27 +75,42 @@ fiftyTwoWeekLow 等。歷史 5d / 60d 算 1W Δ 與 1y percentile,呼叫
 - `DFF`(有效聯邦資金利率,當作 Fed funds rate)
 - 若 yfin 的 `^TNX` 跟 FRED 的 `DGS10` 不一致,**列出兩個值並標「FRED / Yahoo 版本」**。
 
-### 4. 抓 TWSE 三大法人 + 融資
+### 4. TWSE 三大法人(由 extras JSON 讀)+ 融資(TWSE MCP)
 
-**日期參數計算**:報告在 07:00 TPE 跑,呼叫時要取「**上一交易日**」的資料,不是
-「昨日 (`today - 1`)」。規則:
-- 週一/國定假日隔天:回推到上週五(或最近一個非週末非假日)
-- 一般工作日(週二~週五):取 `today - 1`
-- 台股國定假日表沒維護時,若第一次呼叫回空,自動 fallback 再往前推 1 天(最多 3 天)
+**4a. 三大法人**:由 `fetch_extras.py` 已預先抓好,直接從 step 1 讀入的
+`twse_three_investors` 讀數字,**不要**呼叫 twse MCP。欄位:
+
+```
+twse_three_investors = {
+  "as_of_date": "YYYYMMDD",
+  "unit": "TWD 億",
+  "foreign_net_billion_twd":            <外資及陸資淨買超,億元>,
+  "invtrust_net_billion_twd":           <投信淨買超>,
+  "prop_dealer_self_net_billion_twd":   <自營商自行買賣>,
+  "prop_dealer_hedge_net_billion_twd":  <自營商避險>,
+  "prop_dealer_combined_net_billion_twd": <自營商合計 = self + hedge>,
+  "total_net_billion_twd":              <三大法人合計>
+}
+```
+
+正值 = 淨買超,負值 = 淨賣超。TW open 段位一律用 `外資 X 億 / 投信 Y 億 /
+自營 Z 億(合計 T 億)` 的格式,一位小數。若該區塊有 `"error"` 欄位,標
+「三大法人:資料不可用」不要編。
+
+**4b. 融資餘額**:改用 TWSE MCP,需計算「**上一交易日**」的資料。規則:
+- 週一/國定假日隔天:回推到上週五(或最近非週末非假日)
+- 一般工作日:取 `today - 1`
 
 實作:先呼叫 `mcp__twse__get_daily_market_trading_info(date=<today - 1>)`,
-若回空或錯,依序試 `today - 2` / `today - 3`;第一個非空的日期記為 `<TWSE_DATE>`,
-以下所有 TWSE 呼叫都用同一個 `<TWSE_DATE>`。
+若回空或錯,依序試 `today - 2` / `today - 3`;第一個非空的日期記為
+`<TWSE_DATE>`,融資餘額呼叫也用同一個。
 
-呼叫:
-- `mcp__twse__get_foreign_investment_by_industry(date=<TWSE_DATE>)` — 注意:此
-  endpoint 給的是「產業別外資持股 %」(MI_QFIIS_cat),**不是**每日三大法人買賣超
-  金額。TWSE Open API 沒有公開的「三大法人日買賣超」endpoint。若本欄需求為
-  「三大法人淨買超」而此 endpoint 不足以呈現,直接標「TWSE Open API 未提供
-  此資料」,不要硬用產業持股 % 代替。
-- `mcp__twse__get_margin_trading_info(date=<TWSE_DATE>)` — 取融資餘額 + DoD Δ
+呼叫 `mcp__twse__get_margin_trading_info(date=<TWSE_DATE>)` — 取融資餘額
++ DoD Δ。若回空,標「融資餘額:資料不可用」,繼續寫其他段。
 
-若某 endpoint 回空,**標「TWSE 該源今日不可用」**,繼續寫其他段。
+**注意**:`mcp__twse__get_foreign_investment_by_industry` 給的是「產業別外資
+持股 %」,**不是**每日三大法人買賣超金額 — 別呼叫它。三大法人已由 extras
+JSON 提供,見 4a。
 
 ### 5. (best-effort)Fed 新聞稿
 
