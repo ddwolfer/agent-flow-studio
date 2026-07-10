@@ -9,9 +9,9 @@
     { "kind": "macro_data", "name": "Yahoo cross-asset" },
     { "kind": "macro_data", "name": "TWSE 三大法人 / 融資" },
     { "kind": "extras_json", "name": "fetch_extras (Binance fapi / CBOE VIX / Treasury auctions / DefiLlama stablecoins)" },
-    { "kind": "web", "name": "fed-press", "url": "https://www.federalreserve.gov/newsevents/pressreleases.htm" }
+    { "kind": "rss", "name": "fed-press", "url": "https://www.federalreserve.gov/feeds/press_all.xml" }
   ],
-  "tools": ["fred", "yahoo-finance", "twse", "web-fetch"],
+  "tools": ["fred", "yahoo-finance", "twse", "web-fetch", "rss"],
   "prompts": [
     "prompts/shared/faithfulness.md",
     "prompts/morning-briefing/framework.md",

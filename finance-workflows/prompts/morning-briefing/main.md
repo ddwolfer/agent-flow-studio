@@ -74,18 +74,36 @@ fiftyTwoWeekLow 等。歷史 5d / 60d 算 1W Δ 與 1y percentile,呼叫
 
 ### 4. 抓 TWSE 三大法人 + 融資
 
+**日期參數計算**:報告在 07:00 TPE 跑,呼叫時要取「**上一交易日**」的資料,不是
+「昨日 (`today - 1`)」。規則:
+- 週一/國定假日隔天:回推到上週五(或最近一個非週末非假日)
+- 一般工作日(週二~週五):取 `today - 1`
+- 台股國定假日表沒維護時,若第一次呼叫回空,自動 fallback 再往前推 1 天(最多 3 天)
+
+實作:先呼叫 `mcp__twse__get_daily_market_trading_info(date=<today - 1>)`,
+若回空或錯,依序試 `today - 2` / `today - 3`;第一個非空的日期記為 `<TWSE_DATE>`,
+以下所有 TWSE 呼叫都用同一個 `<TWSE_DATE>`。
+
 呼叫:
-- `mcp__twse__get_foreign_investment_by_industry(date=<昨日 YYYYMMDD>)` — 取外資三大法人
-  累計買賣金額(或拆分自營/投信/外資)
-- `mcp__twse__get_margin_trading_info(date=<昨日 YYYYMMDD>)` — 取融資餘額 + DoD Δ
+- `mcp__twse__get_foreign_investment_by_industry(date=<TWSE_DATE>)` — 注意:此
+  endpoint 給的是「產業別外資持股 %」(MI_QFIIS_cat),**不是**每日三大法人買賣超
+  金額。TWSE Open API 沒有公開的「三大法人日買賣超」endpoint。若本欄需求為
+  「三大法人淨買超」而此 endpoint 不足以呈現,直接標「TWSE Open API 未提供
+  此資料」,不要硬用產業持股 % 代替。
+- `mcp__twse__get_margin_trading_info(date=<TWSE_DATE>)` — 取融資餘額 + DoD Δ
 
 若某 endpoint 回空,**標「TWSE 該源今日不可用」**,繼續寫其他段。
 
 ### 5. (best-effort)Fed 新聞稿
 
-呼叫 `mcp__web-fetch__web_extract_article(url="https://www.federalreserve.gov/newsevents/pressreleases.htm")`,
-看最近 24 小時有沒有 FOMC statement / Fed speakers 預告。**只用列表頁**,
-不要再多抓內文細節(深度分析交給 us-macro 那支)。
+呼叫 `mcp__rss__rss_fetch(url="https://www.federalreserve.gov/feeds/press_all.xml", max_items=10)`,
+看最近 24-48 小時內有沒有 FOMC statement / Fed speaker 預告 / interest rate 相關
+release。RSS 每一 item 有 `{title, link, published, summary}`;`published` 是
+`YYYY-MM-DD` 形式。挑 published 在 `${DATE} - 2 天`到 `${DATE}`之間的 items,
+每條寫一行 `<title>(published)`。
+
+若回 `[]` 或最近 48h 內無相關項目,標「Fed 新聞稿 24-48h 內無新項目」,不要
+瞎編。**禁止**再多抓 article 內文細節(深度分析交給 us-macro 那支)。
 
 ### 6. 計算 emoji flag 三條件
 
