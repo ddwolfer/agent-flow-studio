@@ -1,10 +1,39 @@
-# Spec: binance-square-daily — 幣安廣場日更草稿 pipeline
+# Spec: binance-square-daily — 幣安廣場日更 pipeline
 
-> 版本:v1(設計稿,待 user 過目後實作)
+> 版本:v1.1(已上線 — 首篇已發、cron 已掛)
 > 日期:2026-07-15
 > 定位:**6 週實驗**,唯一 KPI = 追蹤數斜率;收益期望值 ≈ 0(見 §8)
 > 前置研究:`finance-workflows/reports/binance-square-poc/`(drafts v1–v4 + square-style-study)
-> KG 錨:`90d771bd`(可行性評估)、`7628581b`(貼文格式規則)
+> KG 錨:`90d771bd`(可行性評估)、`7628581b`(貼文格式規則)、`3b5a218e`(官方 API 規格)
+
+## v1.1 變更(推翻 v1 的兩個核心假設)
+
+1. **官方發文 API 存在** — 創作者中心核發 key(`BINANCE_SQUARE_API_KEY`,.env 已填)。
+   `POST /bapi/composite/v1/public/pgc/openApi/content/add`,header `X-Square-OpenAPI-Key`,
+   payload `{contentType:1, bodyTextOnly}`。100 篇/日。已實測:2026-07-15 首篇
+   post id 344963714872929(B 版美光文)。→「手動複製貼上」全部作廢,改全自動發文。
+2. **執行環境改為常駐互動 session + in-session cron**(user 的 MacBook 24h 開機 +
+   remote control 手機可回覆)→ 不再用 `claude -p`(**省下 credit pool,走訂閱池**),
+   也不需要 Telegram listener — Claude 對話本身就是雙向選文通道。
+
+### v1.1 每日流程(已上線)
+
+```
+10:43 cron(session 內,job 5e576b84)
+  → compute_zones BTC/ETH(+ 熱題相關資產)
+  → 對話中呈現 3 篇(A/B/C)+ 推薦
+11:00 user 起床,手機 Claude 回「發A/發B/發C/skip」
+  → 立即 API 發文 → 回報 shareLink → Telegram 1715 推發布紀錄(純 log)
+14:00 fallback(一次性 job):user 未回覆 → 自動發 B(蹭話題篇,分發槓桿最大)
+```
+
+**已知限制:**
+- in-session cron 是 session-only + 7 天自動過期 → session 重啟或到期需重掛
+  (重掛 prompt 已固化在 cron job 內文,照抄即可;未來可做成 skill 一鍵重掛)
+- API 無「看漲/看跌」方向 chip 欄位(App 手動發文才有)— 待研究是否有未文件化欄位
+- 發文時間 ~11:00-14:00,非研究建議的 20:00-23:00 黃金時段 — 冷啟動期樣本太小
+  測不出差異,接受;有追蹤數後再考慮「早選晚發」變形
+- 圖片/影片 upload API 未接(v1 純文字;官方 scripts 參考 binance-skills-hub)
 
 ---
 
