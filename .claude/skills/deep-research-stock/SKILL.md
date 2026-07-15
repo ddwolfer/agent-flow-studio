@@ -75,9 +75,9 @@ Loop over the parsed ticker list in order.
 
 **Tier A flow** (first 3, non-ETF):
 1. `mcp__yahoo-finance__get_stock_info(ticker=...)` — snapshot
-2. `mcp__edgar__edgar_latest_annual(ticker=...)` → `mcp__edgar__edgar_fetch_text(url=..., max_chars=60000, offset=0)` for Item 1. Business + Item 1A. Risk Factors. Continue-read with `offset=<end>` if needed.
+2. `mcp__edgar__edgar_latest_annual(ticker=...)` → `mcp__edgar__edgar_fetch_text(url=..., max_chars=60000, offset=0)` for Item 1. Business + Item 1A. Risk Factors. Continue-read with `offset=<end>` if needed. If the fetch overflows and is saved to a file, or you delegate the read to a subagent, **you MUST have the actual 10-K content in hand before step 4** — see the hard rule below.
 3. Optional: `mcp__web-fetch__web_extract_article` for recent news only if a specific event (earnings, product launch, geopolitical) in past 7 days is worth quoting. Skip if no clear hit — never fabricate news.
-4. Write framework §1-§7 fully.
+4. Write framework §1-§7 fully. **§2 業務結構 and §6 風險 for a Tier A ticker MUST be written from the 10-K content actually read this run** (Item 1 + Item 1A), not from memory of a prior run, not from a still-running background read. If the EDGAR content is not yet available, WAIT for it — do not write §2/§6 provisionally and fix later. (Lesson 2026-07-15: writing GOOG §6 from memory while an EDGAR subagent was still running produced a materially wrong antitrust claim — "2026 待定" when a 2025-12 final judgment already existed.)
 5. Write **§8 SMC 結構視角下的價格區間**(完整版,150–250 字 + 表格):
    - 結構敘述:趨勢方向、最近 BOS/CHoCH、目前 premium/discount
    - 買入參考區 + basis + 流動性風險(若 `buy_zone_pending`,寫 CHoCH trigger price)
@@ -196,6 +196,7 @@ failed and continue with the rest.
 
 - **NEVER** spawn `claude -p`, **NEVER** run `run-workflow.py`, **NEVER** call any subprocess that re-enters claude. Everything stays inline in this interactive session — this is the whole point of the skill (post-2026-06-15 billing: interactive subscription vs. `claude -p` credit pool).
 - `faithfulness.md` rules dominate everything else. Inference labelled as inference; no fabricated numbers; cite EDGAR Item references when quoting risk factors.
+- **10-K read is on the critical path for Tier A §2/§6.** If you delegate the EDGAR read to a background subagent, that read is a *blocking dependency* for the ticker's §2 業務結構 and §6 風險 — do not write those sections from memory of a prior run while the read is pending. Either read the 10-K inline before writing, or wait for the subagent to return. Writing provisionally "and correcting later" is a faithfulness violation, not a workflow optimization — a report can be pushed to Telegram before the correction lands.
 - If a ticker's Yahoo lookup fails, mark its section 「資料不可用,本次跳過」 and continue with the rest of the list — do not abort the whole report.
 - Stay within the MCPs configured in root `.mcp.json` (`yahoo-finance` / `fred` / `edgar` / `web-fetch` / `knowledge-graph`) plus the local `compute_zones.py` script (yfinance-based, no MCP). Do not invent new tool calls.
 - **§8 faithfulness delta**: every price / basis / invalidation number in §8 MUST exist in the ticker's `_zones/<today>/<TICKER>.json`. LLM may **only** round/format for display, not derive or fabricate. Any price in §8 not present in the JSON is a spec violation.
