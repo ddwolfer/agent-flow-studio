@@ -91,12 +91,19 @@ def fetch_bars(ticker: str, period: str = "12mo") -> list[Bar]:
     for idx, row in df.iterrows():
         # normalize date: drop time & tz for schema stability
         d = idx.date() if hasattr(idx, "date") else dt.date.fromisoformat(str(idx)[:10])
+        o, h, l, cl = (row["Open"], row["High"], row["Low"], row["Close"])
+        # yfinance emits an unsettled bar for the current/latest session while
+        # the market is pre/at-open — OHLC come back as NaN. Skip any bar with
+        # non-finite OHLC so price (= bars[-1].close) never collapses to 0.0
+        # and swing/FVG math isn't poisoned by a phantom bar.
+        if not all(math.isfinite(float(x)) for x in (o, h, l, cl)):
+            continue
         bars.append(Bar(
             date=d.strftime("%Y-%m-%d"),
-            open=float(row["Open"]),
-            high=float(row["High"]),
-            low=float(row["Low"]),
-            close=float(row["Close"]),
+            open=float(o),
+            high=float(h),
+            low=float(l),
+            close=float(cl),
             volume=float(row.get("Volume", 0.0) or 0.0),
         ))
     return bars
