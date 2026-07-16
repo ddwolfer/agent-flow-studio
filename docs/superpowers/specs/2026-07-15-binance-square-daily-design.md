@@ -81,6 +81,14 @@ Telegram topic `TELEGRAM_TOPIC_BINANCE_SQUARE`(=1715),user 看心情挑一篇
 - ⚠️ 免責 footer:「非投資建議」+ 失效位 = 紀律線措辭
 - 建議方向 chip(看漲/看跌)標注在草稿標頭,發文時選
 
+### 2.2.5 用字規範(2026-07-16 定案,不再變動)
+
+1. **內文:一律繁體中文**(發文者身分;廣場有「自動翻譯」,簡體讀者看到的是
+   平台自動轉換後的簡體,觸及不受影響)
+2. **蹭熱題 hashtag:照抄平台原字串,禁止繁簡轉換**(hashtag 為字串精確匹配,
+   轉換 = 蹭到一個不存在的話題,失去話題頁分發)— 平台熱題通常為簡體
+3. **自創 hashtag:繁體或中性**(#BTC #行情分析 #加密貨幣)
+
 ### 2.3 零術語規則(v3 定案)
 發文禁用:CHoCH、BOS、FVG、equal lows/highs、liquidity、premium/discount、
 invalidation、SMC、order block。每個結構概念用「行為描述」:
