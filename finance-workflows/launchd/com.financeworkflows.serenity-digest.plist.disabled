@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.financeworkflows.serenity-digest</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/mcp/.venv/bin/python</string>
+    <string>/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/run-workflow.py</string>
+    <string>serenity-digest</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/pochenkuo/AI/new_financial-report-system/finance-workflows</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/pochenkuo/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/pochenkuo/Library/Logs/financeworkflows-serenity-digest.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/pochenkuo/Library/Logs/financeworkflows-serenity-digest.log</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

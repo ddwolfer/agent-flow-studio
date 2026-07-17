@@ -26,11 +26,14 @@ runner(編排 `claude -p` + 本地 MCP servers),加上兩個 sibling 系統:
 
 | Workflow | 排程(TPE) | 內容 |
 |---|---|---|
-| `serenity-digest` | 每日 06:00 | KOL 日報蒸餾 + KG 記憶 |
 | `morning-briefing` | 每日 07:00 | 跨資產盤前簡報(tape + Five things + TW open;含 Binance funding/CBOE VIX/國債標售/穩定幣/TWSE 三大法人 pre-fetch) |
 | `crypto-daily` | 每日 07:30 | 加密新聞/社群 digest(6 YouTube + web) |
 | `us-macro` | 週一–五 09:30 | Fed/成長/通膨簡報(FRED + Yahoo + Fed RSS) |
-| `eason-tw-stock` | (暫停) | 台股分析師逐字稿 |
+| `serenity-digest` | (已停用) | KOL 日報蒸餾 — user 判定不再需要(2026-07 前停) |
+| `eason-tw-stock` | (已停用) | 台股分析師逐字稿 |
+
+盤點工具:`finance-workflows/scripts/automation_inventory.py` — 一次列出
+launchd(即時掛載狀態)/ in-session Claude cron / pmset 喚醒 三層自動化。
 
 ### arb-sentinel(launchd,零 LLM)
 

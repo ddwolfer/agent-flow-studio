@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.financeworkflows.crypto-daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/cron.example.sh</string>
+        <string>crypto-daily</string>
+    </array>
+
+    <!-- launchd runs with a minimal PATH; claude/yt-dlp/ffmpeg live here. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/pochenkuo/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Daily at 07:30 (Asia/Taipei = the machine's local time). If the Mac is
+         asleep at 07:30, launchd runs this as soon as it wakes. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/pochenkuo/Library/Logs/financeworkflows-crypto-daily.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/pochenkuo/Library/Logs/financeworkflows-crypto-daily.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
