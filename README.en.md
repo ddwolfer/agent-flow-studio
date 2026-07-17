@@ -29,11 +29,14 @@ forum topic per workflow).
 
 | Workflow | Schedule (TPE) | What it does |
 |---|---|---|
-| `serenity-digest` | daily 06:00 | KOL distillation + KG memory |
 | `morning-briefing` | daily 07:00 | cross-asset pre-market brief (tape + Five Things + TW open; pre-fetches Binance funding / CBOE VIX / Treasury auctions / stablecoins / TWSE institutional flows) |
 | `crypto-daily` | daily 07:30 | crypto news/social digest |
 | `us-macro` | Mon–Fri 09:30 | Fed / growth / inflation brief (FRED + Yahoo + Fed RSS) |
-| `eason-tw-stock` | (paused) | TW-stock analyst transcripts |
+| `serenity-digest` | (retired) | KOL distillation — user no longer needs it |
+| `eason-tw-stock` | (retired) | TW-stock analyst transcripts |
+
+Inventory tool: `finance-workflows/scripts/automation_inventory.py` — one
+table across launchd (live status) / in-session Claude crons / pmset wakes.
 
 ### arb-sentinel (launchd, zero LLM)
 
