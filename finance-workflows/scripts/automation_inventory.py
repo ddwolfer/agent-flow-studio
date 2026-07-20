@@ -24,10 +24,10 @@ PLIST_DIRS = [
 # Manifest of in-session Claude crons (session-only, invisible to launchd).
 # Keep in sync with docs/superpowers/specs/2026-07-15-binance-square-daily-design.md
 IN_SESSION_CRONS = [
-    ("10:43 每日", "binance-square 日更:產 3 篇 → user 選 → API 發文"),
+    ("10:43 每日", "binance-square 日更:產 A/B 兩篇 → user 選 → API 發文"),
     ("15:58 每日", "binance-square 短文檢查點 1(事件才發)"),
     ("21:04 每日", "binance-square 短文保底(事件優先,無事件發生活文)"),
-    ("14:02 動態", "當日 fallback:未選文自動發 B(日更流程動態建立)"),
+    ("14:02 動態", "當日 fallback:未選文自動發推薦篇(日更流程動態建立)"),
 ]
 
 
