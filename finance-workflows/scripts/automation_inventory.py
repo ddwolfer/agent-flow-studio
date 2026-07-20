@@ -139,8 +139,8 @@ def main() -> int:
         print(f"  {l}")
 
     print("\n【4. 心跳保護】\n")
-    print("  🐶 square-watchdog(launchd 14:30)盯 in-session cron:")
-    print("     檢查 _published.jsonl 今日有無發文,無則 TG 警告")
+    print("  🩺 daily-heartbeat(launchd 15:00)每日巡檢:")
+    print("     檢查 launchd 報告(mb/crypto/us-macro)+ 廣場長文是否齊全,缺則 TG 列清單")
     print()
     return 0
 
