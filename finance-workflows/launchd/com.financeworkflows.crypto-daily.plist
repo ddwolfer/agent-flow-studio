@@ -8,8 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/cron.example.sh</string>
-        <string>crypto-daily</string>
+        <string>/Users/pochenkuo/AI/new_financial-report-system/finance-workflows/scripts/crypto_daily.sh</string>
     </array>
 
     <!-- launchd runs with a minimal PATH; claude/yt-dlp/ffmpeg live here. -->

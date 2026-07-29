@@ -5,6 +5,7 @@
   "model": "claude-sonnet-4-6",
   "max_turns": 90,
   "sources": [
+    { "kind": "extras_json", "name": "fetch_btc_cycle (幣本位資金費率 / KDJ 4h-1d-1w / 200D MA / 難度+礦工投降訊號 / 算力)" },
     { "kind": "youtube", "name": "加密龐克", "handle": "@crypto_punks", "search_query": "crypto_punks" },
     { "kind": "youtube", "name": "BTV", "handle": "@BTV_CN", "search_query": "BTV_CN" },
     { "kind": "youtube", "name": "Altcoin Daily", "handle": "@AltcoinDaily", "search_query": "Altcoin Daily" },
