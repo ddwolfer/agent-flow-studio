@@ -24,10 +24,13 @@ PLIST_DIRS = [
 # Manifest of in-session Claude crons (session-only, invisible to launchd).
 # Keep in sync with docs/superpowers/specs/2026-07-15-binance-square-daily-design.md
 IN_SESSION_CRONS = [
-    ("10:43 每日", "binance-square 日更:自主決策 A/B → 立即發布(v1.5,user 事後否決)"),
+    ("10:43 每日", "binance-square 日更:自主決策 A/B → 立即發布(v1.5)+ 檢查 spec §4.1 待命素材"),
     ("15:58 每日", "binance-square 短文檢查點 1(事件才發)"),
     ("21:04 每日", "binance-square 短文保底(事件優先,無事件發生活文)"),
 ]
+# in-session cron 有兩個死法:7 天自動過期,或 session 結束即全滅。
+# 最近一次重掛:2026-07-31 → 約 2026-08-07 需再說一次「重掛廣場 cron」。
+LAST_ARMED = "2026-07-31"
 
 
 def _fmt_calendar(cal) -> str:
@@ -131,6 +134,7 @@ def main() -> int:
     print("\n【2. in-session Claude cron(session-only,session 死即滅,7 天過期)】\n")
     for sched, desc in IN_SESSION_CRONS:
         print(f"  🔄 {sched:<12}{desc}")
+    print(f"  📅 最近重掛 {LAST_ARMED} → 約 7 天後過期,需說「重掛廣場 cron」")
     print("  ⚠️ 這區塊來自 manifest,無法從外部驗證 — 實際存活以 watchdog 為準")
 
     print("\n【3. pmset 排程喚醒】\n")
