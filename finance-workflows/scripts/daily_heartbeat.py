@@ -7,18 +7,23 @@ expected outputs exist; if anything is missing, sends ONE Telegram alert
 listing the gaps + the command to re-run each. All-clear = silent (or a
 one-line OK on stdout).
 
-What it checks (as of 2026-07-20):
-  launchd workflow reports (HTML on disk):
-    - morning-briefing  (daily)
-    - crypto-daily      (daily)
-    - us-macro          (weekdays only)
+What it checks:
+  launchd workflow reports (HTML on disk) — which days each is DUE is read
+    straight from that workflow's plist, never hardcoded here (see below)
   binance-square publish log:
-    - >= 1 long post (variant A/B) expected by 15:00 (10:43 pick +
-      14:02 fallback should both have passed)
+    - >= 1 long post (variant A/B) expected by 15:00
 
 Why this matters: 2026-07-20 all three `claude -p` launchd jobs failed
 silently with "Not logged in" after auth expired — no single place said
 "today is incomplete". This is that place.
+
+Why the schedule is parsed from the plists (2026-08-02): this file used to
+carry its own copy of each workflow's schedule, and it drifted —
+morning-briefing's plist is Mon-Fri, but the table here said "daily", so
+the heartbeat cried wolf every Saturday and Sunday. On 2026-07-26 that
+false alarm caused a pointless backfill of a report that was never due.
+A monitor that lies on weekends trains you to ignore it, so the schedule
+now has exactly one source of truth: the plist that launchd itself runs.
 
 Usage:
   python daily_heartbeat.py            # normal check + alert
@@ -28,22 +33,59 @@ import datetime
 import json
 import os
 import pathlib
+import plistlib
 import sys
 
 import httpx
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent          # finance-workflows/
 REPORTS = ROOT / "reports"
+LAUNCHD_DIR = ROOT / "launchd"
 ENV = ROOT / ".env"
 SQUARE_LOG = REPORTS / "binance-square" / "_published.jsonl"
 TELEGRAM_API = "https://api.telegram.org"
 
-# workflow -> runs on which weekdays (0=Mon..6=Sun); None = every day
-LAUNCHD_WORKFLOWS = {
-    "morning-briefing": None,
-    "crypto-daily": None,
-    "us-macro": {0, 1, 2, 3, 4},          # Mon-Fri
-}
+# Workflows worth watching. The days each one runs are NOT listed here — they
+# are read from launchd/com.financeworkflows.<name>.plist. Adding a workflow
+# means adding its name here; changing its schedule means editing only the
+# plist, and this file follows automatically.
+WATCHED_WORKFLOWS = ["morning-briefing", "crypto-daily", "us-macro"]
+
+
+def plist_weekdays(name: str, launchd_dir: pathlib.Path | None = None):
+    """Which weekdays this workflow is due, as Python weekday ints (0=Mon).
+
+    Returns None for "every day" (a plist with no Weekday keys), or a set of
+    0-6. Also returns None when the plist is missing or unreadable — an
+    unknown schedule must degrade to "check every day" so a genuinely broken
+    job still gets caught; the cost is a possible false alarm, which is the
+    safer side to err on than silently never checking.
+
+    launchd's Weekday is 0-7 with BOTH 0 and 7 meaning Sunday; Python's
+    weekday() is 0=Mon..6=Sun. That off-by-one-and-wrapped mapping is the
+    whole reason this lives in a tested function.
+    """
+    d = launchd_dir or LAUNCHD_DIR
+    path = d / f"com.financeworkflows.{name}.plist"
+    if not path.exists():
+        return None
+    try:
+        with open(path, "rb") as f:
+            pl = plistlib.load(f)
+    except Exception:
+        return None
+
+    cal = pl.get("StartCalendarInterval")
+    if cal is None:
+        return None
+    entries = cal if isinstance(cal, list) else [cal]
+    days = set()
+    for e in entries:
+        if "Weekday" not in e:
+            return None                   # any unrestricted entry ⇒ every day
+        launchd_dow = int(e["Weekday"]) % 7        # 7 → 0 (both are Sunday)
+        days.add((launchd_dow - 1) % 7)            # launchd Sun=0 → Python Sun=6
+    return days or None
 
 
 def _load_env(path: pathlib.Path) -> dict:
@@ -66,7 +108,8 @@ def _load_env(path: pathlib.Path) -> dict:
 def check_launchd_reports(today: str, weekday: int) -> list[str]:
     """Return list of gap descriptions for missing workflow reports."""
     gaps = []
-    for name, days in LAUNCHD_WORKFLOWS.items():
+    for name in WATCHED_WORKFLOWS:
+        days = plist_weekdays(name)
         if days is not None and weekday not in days:
             continue                      # not scheduled today
         html = REPORTS / name / f"{today}.html"
