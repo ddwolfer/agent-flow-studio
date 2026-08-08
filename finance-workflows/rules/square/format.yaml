@@ -1,0 +1,43 @@
+# 版面與用字 —— 全部已實證定案,不再變動
+# 來源:KG 7628581b(格式)、2062def4(用字)
+
+name: square_format
+display_name: 廣場貼文格式
+description: 長度、結構、固定元素、用字規範
+
+length:
+  min_chars: 220            # 挖礦資格 200 字 + buffer
+  max_chars: 350            # user 親手濃縮示範的長度
+  counting: 不含空白        # len([c for c in text if not c.isspace()])
+  enforcement: 發布前 assert,不合規不得發送
+
+structure: |
+  hook(1-2 句)→ 📌 條件式劇本/數據條列 → 開放式問句結尾
+
+  砍掉中間的說理鋪陳 —— 滑動的讀者不讀論證。
+  濃縮後要通讀一次:引導句後面必須有被引導的內容(懸空句檢查)。
+
+fixed_elements:
+  cashtags: 3               # 優先序:當篇主角 > BTC > ETH/BNB
+  hashtags: 5               # 至少 1 個蹭當日熱題(若有相關)
+  disclaimer: ⚠️ 非投資建議 + 失效位當紀律線措辭
+
+language: |
+  1. **內文一律繁體中文**(發文者身分)。廣場有自動翻譯,簡體讀者看到的是
+     平台轉換後的版本,觸及不受影響。
+  2. **蹭熱題 hashtag 照抄平台原字串,禁止繁簡轉換** —— hashtag 是字串精確
+     匹配,轉換等於蹭到一個不存在的話題,失去話題頁分發。平台熱題通常是簡體。
+  3. **自創 hashtag 用繁體或中性**(#BTC #行情分析 #加密貨幣)。
+
+zero_jargon: |
+  **零 SMC 術語。** 讀者是一般人,看到看不懂的詞就滑掉。
+  BOS/CHoCH/FVG/premium-discount/order block 一律翻成白話:
+  - 「CHoCH 向下」→「結構出現向下轉折」
+  - 「price_in_zone」→「現價已經進到這一帶」
+  - 「invalidation」→「跌破就代表這個劇本作廢」
+  指標同理:KDJ 不用直接點名,可以說「常用的短線指標」。
+
+banned_wording:
+  - 抄作業 / 直接抄        # 字面邀請照抄操作,與「劇本不是指令」矛盾
+  - 帶單 / 曬單            # 不給兩端進出場價、不秀損益
+  - 編造的個人經歷          # 可以問讀者,不可以虛構自己的故事

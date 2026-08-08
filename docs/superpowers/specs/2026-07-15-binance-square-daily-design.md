@@ -111,6 +111,30 @@ Telegram topic `TELEGRAM_TOPIC_BINANCE_SQUARE`(=1715),user 看心情挑一篇
 
 ---
 
+## 1.5 規則庫(2026-08-08 起,單一事實來源)
+
+本文件以下各節記錄的是**決策脈絡與why**;**當日執行用的規則已抽成版控 YAML**:
+
+```
+finance-workflows/rules/square/
+  selection.yaml          P1/P2/P3 + tie-break + 承諾/問責覆寫
+  format.yaml             220–350 字、結構公式、用字、零術語、禁用措辭
+  personas/a-veteran.yaml A 有立場老手
+  personas/b-detective.yaml B 數據偵探
+  shorts/event.yaml       事件短文觸發條件
+  shorts/casual.yaml      生活短文素材與禁區
+  standby/clarity-act.yaml 待命素材
+```
+
+**為什麼要抽出來**:規則原本散在 cron prompt、本文件、以及對話記憶三處。
+in-session cron 每 7 天過期,重掛時若沒把期間累積的判準補回去,規則就**靜默
+消失**且沒有任何東西會提醒。改成 YAML 後:cron prompt 只說「照
+`rules/square/` 執行」,改規則 = 改檔案 + commit,有 diff、有歷史。
+
+取用方式:`python scripts/rules_loader.py --render square`
+驗證:`python scripts/rules_loader.py --check`(壞掉的 YAML 會讓該份規則從
+prompt 消失,所以 tests/test_rules_loader.py 對每個檔案都做解析與必要欄位檢查)
+
 ## 2. 內容規則(全部已實證定案)
 
 ### 2.1 長度與結構(KG `7628581b`)
