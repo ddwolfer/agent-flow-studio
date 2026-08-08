@@ -25,6 +25,23 @@ Order matters — the user is intentional about which tickers get the deepest tr
 
 State the tier assignment to the user at the start (e.g. "Tier A: NVDA / TSLA / IVV(ETF,跳過 EDGAR); Tier B: NOW / LITE / RDDT / COIN") so they can correct order if needed.
 
+### ETF 佔用 Tier A 名額時要主動提醒
+
+Tier A 真正稀缺的資源是 **10-K 實讀**(每份 Item 1A 約 6–10 萬 token,所以只給 3 個名額)。
+ETF 沒有 10-K —— 排進前 3 等於**浪費一個深讀額度**,而 Tier A 與 Tier B 對 ETF 的實質
+差異很小(兩者都只有 Yahoo metadata + zone JSON,差別僅在寫得長一些)。
+
+所以宣告 tier 分派時,**若有 ETF 落在前 3 位,必須加一句提醒**:
+
+> ⚠️ IVV 是 ETF(無 10-K),佔掉一個 Tier A 名額 —— 本次實際只會深讀 2 份年報。
+> 想換一檔個股上來深讀的話現在說,我還沒開始跑。
+
+然後**照使用者原本的順序繼續執行**,不要自作主張重排 —— 提醒是給資訊,不是代為決定;
+使用者沒回應或說「照舊」就照原順序跑。
+
+(2026-08-09 加入。起因:8/8 的 `TSLA IVV GOOG …` 執行中 IVV 佔了第 2 位,
+使用者事後才發現當次只用到 2 個深讀額度。)
+
 ## Read the spec (binding)
 
 Read these five files and treat them as the literal contract for the work:
