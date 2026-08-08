@@ -29,8 +29,8 @@ IN_SESSION_CRONS = [
     ("21:04 每日", "binance-square 短文保底(事件優先,無事件發生活文)"),
 ]
 # in-session cron 有兩個死法:7 天自動過期,或 session 結束即全滅。
-# 最近一次重掛:2026-07-31 → 約 2026-08-07 需再說一次「重掛廣場 cron」。
-LAST_ARMED = "2026-07-31"
+# 最近一次重掛:2026-08-08 → 約 2026-08-15 需再說一次「重掛廣場 cron」。
+LAST_ARMED = "2026-08-08"
 
 
 def _fmt_calendar(cal) -> str:
