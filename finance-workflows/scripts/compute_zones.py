@@ -638,6 +638,131 @@ def _build_degraded(ticker: str, bars: list[Bar], as_of: str) -> dict[str, Any]:
     }
 
 
+# ── 多透鏡 ─────────────────────────────────────────────────────────────────
+# §8 原本只有 SMC 結構單一視角。多透鏡的用意不是「多幾個指標」,而是讓
+# **透鏡之間的分歧本身變成可呈現的訊號** —— 分歧才是最該告訴讀者的事,
+# 而不是挑一個支持既定結論的視角來講。
+#
+# 訊號在 Python 算好(不是交給 LLM 判斷),理由與 zone 一樣:同一份資料
+# 每次跑要得到同一個結論,LLM 只負責敘述。
+#
+# **風險透鏡的不對稱**(直接移植 daily_stock_analysis 的 _effective_signal):
+# 風險透鏡只能輸出 bearish 或 neutral,**永遠不能輸出 bullish**。
+# 「離失效位很遠」不是看多理由,只是「暫時沒有立即風險」。
+_BULLISH, _BEARISH, _NEUTRAL = "bullish", "bearish", "neutral"
+_RISK_LENS = "risk"
+
+
+def _sma(bars: list[Bar], n: int) -> float | None:
+    if len(bars) < n:
+        return None
+    return _r(sum(b.close for b in bars[-n:]) / n)
+
+
+def lens_metrics(bars: list[Bar]) -> dict:
+    """透鏡要用的確定性指標。全部只從 bars 算,不引入新資料源。"""
+    if not bars:
+        return {}
+    price = bars[-1].close
+    ma20, ma50, ma200 = _sma(bars, 20), _sma(bars, 50), _sma(bars, 200)
+    vols = [b.volume for b in bars[-20:] if b.volume]
+    vol_avg = _r(sum(vols) / len(vols)) if vols else None
+    vol_last = _r(bars[-1].volume) if bars[-1].volume else None
+    return {
+        "ma20": ma20, "ma50": ma50, "ma200": ma200,
+        "price_vs_ma200_pct": _r((price / ma200 - 1) * 100) if ma200 else None,
+        "ma_stack": (
+            "bullish" if ma20 and ma50 and ma200 and ma20 > ma50 > ma200 else
+            "bearish" if ma20 and ma50 and ma200 and ma20 < ma50 < ma200 else
+            "mixed" if ma20 and ma50 and ma200 else None
+        ),
+        "volume_20d_avg": vol_avg,
+        "volume_latest": vol_last,
+        "volume_ratio": _r(vol_last / vol_avg) if vol_avg and vol_last else None,
+    }
+
+
+def lens_signals(out: dict, metrics: dict) -> dict:
+    """每個透鏡各給一個訊號,並偵測分歧。
+
+    回傳的 conflict_type 有四種:
+      aligned            全部同向 → 可以講得肯定一點
+      mixed_with_neutral 有方向但有人棄權 → 講方向但註明未全數支持
+      **conflicting**    有人看多有人看空 → **必須把分歧本身寫出來**
+      insufficient       有效訊號不足 → 不要硬給結論
+    """
+    lenses: list[dict] = []
+
+    # 1. 結構(原本的 SMC 視角)
+    trend = (out.get("trend") or {}).get("direction")
+    pos = (out.get("range") or {}).get("position")
+    if trend in ("up", "down", "range"):
+        sig = (_BULLISH if trend == "up" else
+               _BEARISH if trend == "down" else _NEUTRAL)
+        lenses.append({"lens": "structure", "signal": sig,
+                       "basis": f"trend={trend}, position={pos}"})
+
+    # 2. 均線排列
+    stack = metrics.get("ma_stack")
+    if stack:
+        sig = (_BULLISH if stack == "bullish" else
+               _BEARISH if stack == "bearish" else _NEUTRAL)
+        lenses.append({"lens": "moving_average", "signal": sig,
+                       "basis": f"MA20/50/200 {stack}, "
+                                f"距 200MA {metrics.get('price_vs_ma200_pct')}%"})
+
+    # 3. 量能:只確認不領先 —— 量能從不單獨給方向,只說「有沒有人參與」
+    ratio = metrics.get("volume_ratio")
+    if ratio is not None:
+        lenses.append({"lens": "volume", "signal": _NEUTRAL,
+                       "basis": f"最新量 / 20 日均量 = {ratio}",
+                       "note": "量能只確認參與度,不單獨給方向"})
+
+    # 4. 風險:距失效位多遠。**不對稱 —— 只能 bearish 或 neutral。**
+    bz = out.get("buy_zone") or {}
+    inval, price = bz.get("invalidation_price"), out.get("price")
+    if inval and price:
+        dist = (price / inval - 1) * 100
+        raw = _BEARISH if dist < 3 else _NEUTRAL
+        lenses.append({
+            "lens": _RISK_LENS,
+            "signal": _effective_lens_signal(_RISK_LENS, raw),
+            "basis": f"距失效位 {inval} 還有 {_r(dist)}%",
+            "note": "風險透鏡不輸出看多 —— 離失效位遠只代表暫無立即風險",
+        })
+
+    sigs = [x["signal"] for x in lenses]
+    bulls, bears = sigs.count(_BULLISH), sigs.count(_BEARISH)
+    if len(sigs) < 2:
+        conflict = "insufficient"
+    elif bulls and bears:
+        conflict = "conflicting"
+    elif bulls or bears:
+        conflict = "aligned" if _NEUTRAL not in sigs else "mixed_with_neutral"
+    else:
+        conflict = "insufficient"
+
+    return {
+        "lenses": lenses,
+        "conflict_type": conflict,
+        "bullish_count": bulls,
+        "bearish_count": bears,
+        "neutral_count": sigs.count(_NEUTRAL),
+        "disclosure_required": conflict == "conflicting",
+    }
+
+
+def _effective_lens_signal(lens: str, signal: str) -> str:
+    """風險透鏡的看多訊號一律降級為中性。
+
+    移植自 daily_stock_analysis/src/agent/disagreement.py 的 _effective_signal:
+    風險只能警告,不能加碼看好。寫在程式裡,敘述層繞不過去。
+    """
+    if lens == _RISK_LENS and signal == _BULLISH:
+        return _NEUTRAL
+    return signal
+
+
 # ── market context ─────────────────────────────────────────────────────────
 def market_context(ticker: str, bars: list[Bar]) -> dict:
     """今天市場開了嗎,以及最後一根 K 是不是真的「今天」。
@@ -703,6 +828,13 @@ def main() -> int:
     out["market"] = market_context(ticker, bars)
     if out["market"].get("data_is_stale"):
         out.setdefault("warnings", []).append("market_closed_data_not_today")
+
+    metrics = lens_metrics(bars)
+    if metrics:
+        out["lens_metrics"] = metrics
+        out["lens_signals"] = lens_signals(out, metrics)
+        if out["lens_signals"]["disclosure_required"]:
+            out.setdefault("warnings", []).append("lens_conflict_disclose_required")
 
     out["data_source"] = dict(LAST_FETCH_TRACE)
     if LAST_FETCH_TRACE.get("degraded") and LAST_FETCH_TRACE.get("source"):

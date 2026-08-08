@@ -161,3 +161,93 @@ def test_binance_returns_empty_for_unmapped_ticker():
 def test_binance_symbol_map_covers_our_crypto():
     for t in ("BTC-USD", "ETH-USD"):
         assert t in _cz._CRYPTO_BINANCE_SYMBOL
+
+
+# ── 多透鏡 + 風險不對稱(2026-08-08 新增)──────────────────────────────────
+# 多透鏡的用意不是多幾個指標,而是讓**透鏡之間的分歧變成可呈現的訊號**。
+# 訊號在 Python 算,不交給 LLM 判斷 —— 同一份資料每次要得到同一個結論。
+
+def _bars_trending(n=250, start=100.0, step=1.0):
+    return [_cz.Bar(date=f"2026-01-{i % 28 + 1:02d}", open=start + i * step,
+                    high=start + i * step + 1, low=start + i * step - 1,
+                    close=start + i * step, volume=1000.0) for i in range(n)]
+
+
+def test_risk_lens_never_outputs_bullish():
+    """移植自 disagreement.py 的 _effective_signal —— 風險只能警告不能看好。"""
+    assert _cz._effective_lens_signal("risk", "bullish") == "neutral"
+    assert _cz._effective_lens_signal("risk", "bearish") == "bearish"
+    assert _cz._effective_lens_signal("risk", "neutral") == "neutral"
+
+
+def test_non_risk_lens_keeps_bullish():
+    assert _cz._effective_lens_signal("structure", "bullish") == "bullish"
+    assert _cz._effective_lens_signal("moving_average", "bullish") == "bullish"
+
+
+def test_risk_lens_in_real_signals_is_never_bullish():
+    """即使離失效位很遠,風險透鏡也只能是 neutral。"""
+    out = {"trend": {"direction": "up"}, "range": {"position": "discount"},
+           "price": 200.0, "buy_zone": {"invalidation_price": 100.0}}
+    sigs = _cz.lens_signals(out, {"ma_stack": "bullish", "volume_ratio": 1.0})
+    risk = next(l for l in sigs["lenses"] if l["lens"] == "risk")
+    assert risk["signal"] == "neutral"
+
+
+def test_risk_lens_turns_bearish_when_close_to_invalidation():
+    out = {"trend": {"direction": "up"}, "range": {"position": "discount"},
+           "price": 101.0, "buy_zone": {"invalidation_price": 100.0}}
+    sigs = _cz.lens_signals(out, {})
+    risk = next(l for l in sigs["lenses"] if l["lens"] == "risk")
+    assert risk["signal"] == "bearish"
+
+
+def test_volume_lens_never_gives_direction():
+    """量能只確認參與度,不單獨給方向 —— 否則會變成第二個結構訊號。"""
+    for ratio in (0.1, 1.0, 5.0):
+        sigs = _cz.lens_signals({"trend": {"direction": "up"}},
+                                {"volume_ratio": ratio})
+        vol = next(l for l in sigs["lenses"] if l["lens"] == "volume")
+        assert vol["signal"] == "neutral", ratio
+
+
+def test_conflicting_lenses_require_disclosure():
+    """結構看多但均線看空 → 必須揭露分歧,這是多透鏡存在的理由。"""
+    out = {"trend": {"direction": "up"}, "range": {"position": "premium"}}
+    sigs = _cz.lens_signals(out, {"ma_stack": "bearish"})
+    assert sigs["conflict_type"] == "conflicting"
+    assert sigs["disclosure_required"] is True
+
+
+def test_aligned_lenses_do_not_require_disclosure():
+    out = {"trend": {"direction": "up"}, "range": {"position": "discount"}}
+    sigs = _cz.lens_signals(out, {"ma_stack": "bullish"})
+    assert sigs["conflict_type"] == "aligned"
+    assert sigs["disclosure_required"] is False
+
+
+def test_single_lens_is_insufficient_not_aligned():
+    """只有一個訊號不叫「一致」,叫樣本不足 —— 不可據此講得肯定。"""
+    sigs = _cz.lens_signals({"trend": {"direction": "up"}}, {})
+    assert sigs["conflict_type"] == "insufficient"
+
+
+def test_ma_stack_detects_bullish_order():
+    m = _cz.lens_metrics(_bars_trending())
+    assert m["ma_stack"] == "bullish"          # 單調上升 → MA20>MA50>MA200
+
+
+def test_ma_stack_detects_bearish_order():
+    m = _cz.lens_metrics(_bars_trending(step=-0.3))
+    assert m["ma_stack"] == "bearish"
+
+
+def test_lens_metrics_handles_short_history():
+    """不足 200 根時 ma200 為 None,不可以拿 None 去比大小。"""
+    m = _cz.lens_metrics(_bars_trending(n=30))
+    assert m["ma20"] is not None and m["ma200"] is None
+    assert m["ma_stack"] is None
+
+
+def test_lens_metrics_empty_bars():
+    assert _cz.lens_metrics([]) == {}

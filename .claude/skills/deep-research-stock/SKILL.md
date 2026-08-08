@@ -78,11 +78,17 @@ Loop over the parsed ticker list in order.
 2. `mcp__edgar__edgar_latest_annual(ticker=...)` → `mcp__edgar__edgar_fetch_text(url=..., max_chars=60000, offset=0)` for Item 1. Business + Item 1A. Risk Factors. Continue-read with `offset=<end>` if needed. If the fetch overflows and is saved to a file, or you delegate the read to a subagent, **you MUST have the actual 10-K content in hand before step 4** — see the hard rule below.
 3. Optional: `mcp__web-fetch__web_extract_article` for recent news only if a specific event (earnings, product launch, geopolitical) in past 7 days is worth quoting. Skip if no clear hit — never fabricate news.
 4. Write framework §1-§7 fully. **§2 業務結構 and §6 風險 for a Tier A ticker MUST be written from the 10-K content actually read this run** (Item 1 + Item 1A), not from memory of a prior run, not from a still-running background read. If the EDGAR content is not yet available, WAIT for it — do not write §2/§6 provisionally and fix later. (Lesson 2026-07-15: writing GOOG §6 from memory while an EDGAR subagent was still running produced a materially wrong antitrust claim — "2026 待定" when a 2025-12 final judgment already existed.)
-5. Write **§8 SMC 結構視角下的價格區間**(完整版,150–250 字 + 表格):
-   - 結構敘述:趨勢方向、最近 BOS/CHoCH、目前 premium/discount
+5. Write **§8 結構與價格區間(多透鏡)**(完整版,180–300 字 + 兩個表格):
+   - **8a 結構敘述**:趨勢方向、最近 BOS/CHoCH、目前 premium/discount
+   - **8b 多透鏡表**(v0.4 新增,資料來自 `lens_signals`):四列 —
+     structure / moving_average / volume / risk,每列寫「訊號 + basis」。
+     訊號**照抄 JSON,不得重判**。
+   - **8c 透鏡分歧**:`disclosure_required == true` 時獨立一段寫出分歧;
+     `conflict_type == "insufficient"` 時寫「透鏡樣本不足,不下綜合判斷」
    - 買入參考區 + basis + 流動性風險(若 `buy_zone_pending`,寫 CHoCH trigger price)
    - 賣出/減碼參考區 + basis
    - **失效條件**(獨立一行,加粗)
+   - 若 `market.data_is_stale` 為真:價格一律寫「<last_bar_date> 收盤」不寫「今天」
    - `mode == "degraded"`:改一行「上市未滿 60 個交易日,結構樣本不足,僅提供位置參考,不產出買賣區間」+ 位置百分位
 
 **Tier A flow for ETF** (ETF lands in first 3):
@@ -98,7 +104,7 @@ Loop over the parsed ticker list in order.
 3. Write framework §1 (1-2 sentences from `longBusinessSummary`) + §4 slim (6-7 key fields only) + §6 slim (3 bullets: business + macro link) + §7 full (direction + confidence + 3-5 watch points)
 4. Write **§8 精簡版**(三行):
    ```
-   趨勢:<direction>(<basis>)｜位置:<premium|discount>
+   趨勢:<direction>(<basis>)｜位置:<premium|discount>｜透鏡:<conflict_type>
    買區:<low>–<high>(<basis 精簡>) 或「暫無(需 daily close > xx 觸發 CHoCH)」
    減碼:<low>–<high>｜失效:收盤 <up-or-down> <invalidation_price>
    ```
@@ -205,5 +211,22 @@ failed and continue with the rest.
 - **§8 H1(v0.3)** — If `buy_zone` / `sell_zone` is null and the corresponding `_note` field has text, §8 MUST display that note (never silent-skip). GOOG/IVV 典型:賣區 null + note 說明「所有 premium swing high 皆已被突破」。
 - **§8 H2(v0.3)** — If `warnings` contains `zones_overlapping_pivotal`, §8 MUST show an independent warning block BEFORE the zone descriptions: 「⚠️ 買賣區重疊(pivotal state):demand/supply 短兵相接,方向未明;下一根 K 的收盤方向為關鍵訊號。」TSLA 典型。
 - **§8 H3(v0.3)** — If `buy_zone.price_in_zone == true` or `sell_zone.price_in_zone == true`,§8 措辭 MUST use「⚠️ 現價已在 X 區內」strong voice,not「等待回檔」or「持續觀察」passive voice. NOW/TSLA 典型。
+- **§8 L1(v0.4 多透鏡)** — zone JSON 現在含 `lens_signals`(structure /
+  moving_average / volume / risk 四個透鏡各一個訊號 + `conflict_type`)。§8 **MUST**
+  在 Tier A 呈現一個小表列出每個透鏡的訊號與 basis。訊號由 `compute_zones.py`
+  算好,**LLM 只敘述不重判** —— 同一份資料每次必須得到同一個結論。
+- **§8 L2(v0.4)** — 若 `lens_signals.disclosure_required == true`
+  (即 `conflict_type == "conflicting"`,有透鏡看多、有透鏡看空),§8 **MUST**
+  用獨立段落把分歧本身寫出來,例:「結構偏多但均線排列偏空 —— 兩個視角互相矛盾,
+  在其中一方轉向前不宜下單一結論」。**挑一個支持既定結論的透鏡來講 = spec 違規。**
+  分歧才是最該告訴讀者的事。
+- **§8 L3(v0.4 風險不對稱)** — `risk` 透鏡**永遠不會**輸出 bullish(程式強制:
+  離失效位遠只降級成 neutral)。敘述層 MUST 沿用同一個不對稱:**「距失效位還很遠」
+  不得寫成看多理由**,只能寫「暫時沒有立即的結構風險」。
+- **§8 L4(v0.4)** — `conflict_type == "insufficient"`(有效訊號 < 2)時,
+  MUST 寫「透鏡樣本不足,不下綜合判斷」,不可以拿單一透鏡當成多視角共識。
+- **§8 M1(v0.4 資料誠實)** — 若 zone JSON 的 `market.data_is_stale == true`
+  (該市場當日休市),§8 的價格敘述 MUST 寫「<last_bar_date> 收盤」而非「今天」。
+  若 `data_source.degraded == true`,MUST 註明數據來自備援源。
 - **§8 H4(v0.3)** — `intraday_stress_level` 僅 Tier A 呈現(節省 Tier B token);呈現時 MUST label as「盤中壓力測試位」以區隔於 `invalidation_price`,避免讀者混淆兩者為同一線。
 - Knowledge-graph: after writing the report, optionally record a single `pattern/observation` per Tier A ticker if a non-obvious finding emerged (e.g. unusual debt structure, surprising margin trend, novel risk language in 10-K, §7/§8 分歧持續數週). Do not flood the graph with routine snapshots.
