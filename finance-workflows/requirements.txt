@@ -16,3 +16,6 @@ curl_cffi>=0.15,<1
 # swapping gemma_transcribe → whisper_transcribe). CPU int8, auto language.
 faster-whisper>=1.0
 pytest>=8.0
+
+# 交易日曆(市場開市判斷/盤別)— 缺少時 trading_calendar.py fail-open
+exchange-calendars>=4.13

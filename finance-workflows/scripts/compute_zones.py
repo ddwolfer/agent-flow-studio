@@ -564,6 +564,47 @@ def _build_degraded(ticker: str, bars: list[Bar], as_of: str) -> dict[str, Any]:
     }
 
 
+# ── market context ─────────────────────────────────────────────────────────
+def market_context(ticker: str, bars: list[Bar]) -> dict:
+    """今天市場開了嗎,以及最後一根 K 是不是真的「今天」。
+
+    在此之前 as_of 一律寫成今天,但美股休市日 yfinance 回的是前一交易日的
+    bar —— §8 就會把上一個交易日的收盤敘述成「今天的價格」。這不是資料錯,
+    是標註錯,而標註錯更難察覺。
+
+    所以這裡不擋抓取(假日的舊 bar 仍然是正確的最後收盤),只把事實寫進
+    輸出讓下游誠實表述:`data_is_stale` 為真時,敘述必須寫「X 日收盤」而
+    不是「今天」。
+
+    交易日曆不可用時整段回 unknown —— 不因為缺日曆就宣稱資料過期。
+    """
+    try:
+        import trading_calendar as tcal
+    except ImportError:                                      # pragma: no cover
+        return {"market": None, "status": "unknown",
+                "note": "trading_calendar 不可用"}
+
+    market = tcal.market_for_symbol(ticker)
+    if market is None:
+        return {"market": None, "status": "unknown",
+                "note": f"{ticker} 未登記市場"}
+
+    is_open = tcal.is_market_open(market)
+    phase = tcal.market_phase(market)
+    last_bar = bars[-1].date if bars else None
+    today = tcal.market_today(market).strftime("%Y-%m-%d")
+    # 只有在「明確休市」且最後一根 K 不是今天時才算 stale。未知不算。
+    stale = bool(is_open is False and last_bar and last_bar != today)
+    return {
+        "market": market,
+        "is_open": is_open,
+        "phase": phase.value,
+        "market_today": today,
+        "last_bar_date": last_bar,
+        "data_is_stale": stale,
+    }
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -585,6 +626,9 @@ def main() -> int:
         return 1
 
     out = build_output(ticker, bars)
+    out["market"] = market_context(ticker, bars)
+    if out["market"].get("data_is_stale"):
+        out.setdefault("warnings", []).append("market_closed_data_not_today")
     text = json.dumps(out, ensure_ascii=False, indent=2, sort_keys=False)
     if args.out:
         p = pathlib.Path(args.out)
