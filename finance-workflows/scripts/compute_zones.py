@@ -83,7 +83,22 @@ def _r4(x: float) -> float:
 
 
 # ── data fetch ─────────────────────────────────────────────────────────────
-def fetch_bars(ticker: str, period: str = "12mo") -> list[Bar]:
+# 備援源盤點(2026-08-08 實測):
+#   Stooq          ✗ JS 挑戰擋機器人,回的是驗證頁不是 CSV
+#   Yahoo chart 直連 ✗ 429(yfinance 走 cookie/crumb 認證,直連拿不到)
+#   Binance klines  ✓ 免 key、穩定、已在 fetch_btc_cycle 用著
+# 結論:**加密有真備援,美股 ETF 目前沒有免 key 的備援。**
+# 所以這裡只接 Binance(加密),美股維持單一來源並在輸出誠實標明 —— 寧可
+# 標示「無備援」,也不要掛一個沒驗證過的來源假裝有韌性。要補美股備援得
+# 上帶 key 的源(Alpha Vantage / Finnhub 皆有免費額度),那是另一個決定。
+_BINANCE_SPOT = "https://api.binance.com/api/v3/klines"
+_CRYPTO_BINANCE_SYMBOL = {
+    "BTC-USD": "BTCUSDT", "ETH-USD": "ETHUSDT",
+    "BTCUSDT": "BTCUSDT", "ETHUSDT": "ETHUSDT",
+}
+
+
+def _bars_from_yfinance(ticker: str, period: str) -> list[Bar]:
     df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True)
     if df is None or df.empty:
         return []
@@ -107,6 +122,65 @@ def fetch_bars(ticker: str, period: str = "12mo") -> list[Bar]:
             volume=float(row.get("Volume", 0.0) or 0.0),
         ))
     return bars
+
+
+def _bars_from_binance(ticker: str, period: str) -> list[Bar]:
+    """加密備援。只支援登記過的標的,其餘直接回空讓上層繼續降級。"""
+    symbol = _CRYPTO_BINANCE_SYMBOL.get(ticker.upper())
+    if not symbol:
+        return []
+    import httpx
+    limit = 400 if period.endswith("mo") else 1000
+    r = httpx.get(_BINANCE_SPOT,
+                  params={"symbol": symbol, "interval": "1d", "limit": limit},
+                  timeout=30.0)
+    r.raise_for_status()
+    bars: list[Bar] = []
+    for k in r.json():
+        o, h, l, cl = (float(k[1]), float(k[2]), float(k[3]), float(k[4]))
+        if not all(math.isfinite(x) for x in (o, h, l, cl)):
+            continue
+        bars.append(Bar(
+            date=dt.datetime.utcfromtimestamp(k[0] / 1000).strftime("%Y-%m-%d"),
+            open=o, high=h, low=l, close=cl, volume=float(k[5]),
+        ))
+    return bars
+
+
+# 依序嘗試,先成功者勝。名稱會寫進輸出的 data_source。
+_SOURCE_CHAIN = [("yfinance", _bars_from_yfinance), ("binance", _bars_from_binance)]
+
+# 呼叫後由 main() 讀取,說明資料實際來自哪一級、以及沿途失敗了什麼。
+LAST_FETCH_TRACE: dict = {}
+
+
+def fetch_bars(ticker: str, period: str = "12mo") -> list[Bar]:
+    """多源降級取 K 線。
+
+    降級必須可見:實際來源與沿途的失敗都記進 LAST_FETCH_TRACE,由 main()
+    寫進 JSON。靜默換源是最糟的形式 —— 讀者會以為看到的是主來源的資料。
+    """
+    global LAST_FETCH_TRACE
+    attempts: list[dict] = []
+    for name, fn in _SOURCE_CHAIN:
+        try:
+            bars = fn(ticker, period)
+        except Exception as e:                    # noqa: BLE001 — I/O boundary
+            attempts.append({"source": name, "ok": False,
+                             "error": f"{type(e).__name__}: {str(e)[:120]}"})
+            continue
+        if bars:
+            LAST_FETCH_TRACE = {
+                "source": name,
+                "degraded": name != _SOURCE_CHAIN[0][0],
+                "attempts": attempts + [{"source": name, "ok": True,
+                                         "bars": len(bars)}],
+            }
+            return bars
+        attempts.append({"source": name, "ok": False, "error": "no_bars"})
+
+    LAST_FETCH_TRACE = {"source": None, "degraded": True, "attempts": attempts}
+    return []
 
 
 # ── indicators ─────────────────────────────────────────────────────────────
@@ -629,6 +703,12 @@ def main() -> int:
     out["market"] = market_context(ticker, bars)
     if out["market"].get("data_is_stale"):
         out.setdefault("warnings", []).append("market_closed_data_not_today")
+
+    out["data_source"] = dict(LAST_FETCH_TRACE)
+    if LAST_FETCH_TRACE.get("degraded") and LAST_FETCH_TRACE.get("source"):
+        # 降級成功也是降級 —— 讓下游知道這不是主來源的數字。
+        out.setdefault("warnings", []).append(
+            f"data_source_degraded_to_{LAST_FETCH_TRACE['source']}")
     text = json.dumps(out, ensure_ascii=False, indent=2, sort_keys=False)
     if args.out:
         p = pathlib.Path(args.out)

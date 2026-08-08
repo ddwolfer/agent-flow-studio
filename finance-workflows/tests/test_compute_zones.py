@@ -92,3 +92,72 @@ def test_build_output_price_never_zero_with_nan_tail(monkeypatch):
     assert out["price"] > 0
     assert out["mode"] == "full"
     assert "buy_zone_above_price_anomaly" not in out.get("warnings", [])
+
+
+# ── 多源降級(2026-08-08 新增)────────────────────────────────────────────
+# 靜默換源是最糟的失敗形式:讀者會以為看到的是主來源的數字。所以這裡的
+# 重點不只是「有沒有換成功」,而是「換了有沒有被記錄下來」。
+import compute_zones as _cz                                    # noqa: E402
+
+
+def _fake_bars(n=5):
+    return [_cz.Bar(date=f"2026-08-{i+1:02d}", open=1.0, high=2.0, low=0.5,
+                    close=1.5, volume=10.0) for i in range(n)]
+
+
+def test_primary_source_wins_and_is_not_marked_degraded(monkeypatch):
+    monkeypatch.setattr(_cz, "_SOURCE_CHAIN",
+                        [("yfinance", lambda t, p: _fake_bars()),
+                         ("binance", lambda t, p: [])])
+    bars = _cz.fetch_bars("BTC-USD")
+    assert len(bars) == 5
+    assert _cz.LAST_FETCH_TRACE["source"] == "yfinance"
+    assert _cz.LAST_FETCH_TRACE["degraded"] is False
+
+
+def test_falls_back_to_second_source_and_records_the_failure(monkeypatch):
+    def boom(t, p):
+        raise RuntimeError("yfinance down")
+    monkeypatch.setattr(_cz, "_SOURCE_CHAIN",
+                        [("yfinance", boom),
+                         ("binance", lambda t, p: _fake_bars(3))])
+    bars = _cz.fetch_bars("BTC-USD")
+    assert len(bars) == 3
+    trace = _cz.LAST_FETCH_TRACE
+    assert trace["source"] == "binance"
+    assert trace["degraded"] is True
+    # 失敗的那一級必須留在紀錄裡,不能只留下成功的那個
+    assert trace["attempts"][0]["source"] == "yfinance"
+    assert trace["attempts"][0]["ok"] is False
+    assert "yfinance down" in trace["attempts"][0]["error"]
+
+
+def test_empty_result_counts_as_failure_not_success(monkeypatch):
+    """回空 list 不是「成功但沒資料」,是這一級失敗,要繼續降級。"""
+    monkeypatch.setattr(_cz, "_SOURCE_CHAIN",
+                        [("yfinance", lambda t, p: []),
+                         ("binance", lambda t, p: _fake_bars(2))])
+    assert len(_cz.fetch_bars("BTC-USD")) == 2
+    assert _cz.LAST_FETCH_TRACE["source"] == "binance"
+    assert _cz.LAST_FETCH_TRACE["attempts"][0]["error"] == "no_bars"
+
+
+def test_all_sources_failing_returns_empty_with_full_trace(monkeypatch):
+    monkeypatch.setattr(_cz, "_SOURCE_CHAIN",
+                        [("yfinance", lambda t, p: []),
+                         ("binance", lambda t, p: [])])
+    assert _cz.fetch_bars("QQQ") == []
+    trace = _cz.LAST_FETCH_TRACE
+    assert trace["source"] is None and trace["degraded"] is True
+    assert len(trace["attempts"]) == 2
+
+
+def test_binance_returns_empty_for_unmapped_ticker():
+    """美股標的走不到 Binance —— 必須乾淨地回空,而不是丟例外或亂抓。"""
+    assert _cz._bars_from_binance("QQQ", "12mo") == []
+    assert _cz._bars_from_binance("NVDA", "12mo") == []
+
+
+def test_binance_symbol_map_covers_our_crypto():
+    for t in ("BTC-USD", "ETH-USD"):
+        assert t in _cz._CRYPTO_BINANCE_SYMBOL
