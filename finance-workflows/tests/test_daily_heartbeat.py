@@ -10,7 +10,6 @@ Most of the surface here is the launchd→Python weekday conversion, which is
 off-by-one AND wrapped (launchd: 0 or 7 = Sunday, 1 = Monday; Python:
 0 = Monday, 6 = Sunday), so it gets exhaustive coverage.
 """
-import json
 import pathlib
 import plistlib
 import sys
@@ -124,17 +123,5 @@ def test_present_report_is_not_a_gap(monkeypatch, tmp_path):
     monkeypatch.setattr(hb, "plist_weekdays", lambda n, d=None: None)
     assert hb.check_launchd_reports("2026-07-29", 2) == []
 
-
-# ── square publish log ───────────────────────────────────────────────────────
-def test_square_gap_when_no_long_post(monkeypatch, tmp_path):
-    log = tmp_path / "_published.jsonl"
-    log.write_text(json.dumps({"date": "2026-07-29", "variant": "short-casual"}) + "\n")
-    monkeypatch.setattr(hb, "SQUARE_LOG", log)
-    assert len(hb.check_square("2026-07-29")) == 1
-
-
-def test_square_ok_with_long_post(monkeypatch, tmp_path):
-    log = tmp_path / "_published.jsonl"
-    log.write_text(json.dumps({"date": "2026-07-29", "variant": "B"}) + "\n")
-    monkeypatch.setattr(hb, "SQUARE_LOG", log)
-    assert hb.check_square("2026-07-29") == []
+# 廣場發文巡檢的兩個測試已於 2026-08-19 隨 check_square() 一併移除
+# (Write-to-Earn 實驗結束,「今日無長文」不再是缺口)。

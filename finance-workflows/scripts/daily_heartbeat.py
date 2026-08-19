@@ -10,9 +10,6 @@ one-line OK on stdout).
 What it checks:
   launchd workflow reports (HTML on disk) — which days each is DUE is read
     straight from that workflow's plist, never hardcoded here (see below)
-  binance-square publish log:
-    - >= 1 long post (variant A/B) expected by 15:00
-
 Why this matters: 2026-07-20 all three `claude -p` launchd jobs failed
 silently with "Not logged in" after auth expired — no single place said
 "today is incomplete". This is that place.
@@ -25,12 +22,17 @@ false alarm caused a pointless backfill of a report that was never due.
 A monitor that lies on weekends trains you to ignore it, so the schedule
 now has exactly one source of truth: the plist that launchd itself runs.
 
+The binance-square check was removed on 2026-08-19: the Write-to-Earn
+experiment ended (user: 「廣場發文幫我取消 到這邊就夠了」), so "today has no
+long post" is now the *intended* state, not a gap. A monitor that reports
+the intended state as a failure is the same cry-wolf bug as the weekend
+false alarm above.
+
 Usage:
-  python daily_heartbeat.py            # normal check + alert
+  python daily_heartbeat.py           # normal check + alert
   python daily_heartbeat.py --dry-run  # print verdict, never send TG
 """
 import datetime
-import json
 import os
 import pathlib
 import plistlib
@@ -42,7 +44,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent          # finance-workflo
 REPORTS = ROOT / "reports"
 LAUNCHD_DIR = ROOT / "launchd"
 ENV = ROOT / ".env"
-SQUARE_LOG = REPORTS / "binance-square" / "_published.jsonl"
 TELEGRAM_API = "https://api.telegram.org"
 
 # Workflows worth watching. The days each one runs are NOT listed here — they
@@ -121,26 +122,6 @@ def check_launchd_reports(today: str, weekday: int) -> list[str]:
     return gaps
 
 
-def check_square(today: str) -> list[str]:
-    """Return gap if today has no long post (A/B) in the publish log."""
-    if not SQUARE_LOG.exists():
-        return ["• binance-square:發文日誌不存在"]
-    longs = 0
-    for line in SQUARE_LOG.read_text("utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            p = json.loads(line)
-        except Exception:
-            continue
-        if p.get("date") == today and p.get("variant") in ("A", "B"):
-            longs += 1
-    if longs == 0:
-        return ["• binance-square:今日無長文 → 到 Claude 對話選文或說「重掛廣場 cron」"]
-    return []
-
-
 def send_alert(env: dict, text: str) -> bool:
     bot = env.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat = env.get("TELEGRAM_CHAT_ID", "").strip()
@@ -168,7 +149,7 @@ def main(argv=None) -> int:
     today = now.strftime("%Y-%m-%d")
     weekday = now.weekday()
 
-    gaps = check_launchd_reports(today, weekday) + check_square(today)
+    gaps = check_launchd_reports(today, weekday)
 
     if not gaps:
         print(f"[heartbeat] OK — all expected outputs present ({today})")
