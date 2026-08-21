@@ -1,6 +1,6 @@
 ---
 name: deep-research-stock
-description: Use when the user invokes /deep-research-stock with a space- or comma-separated list of stock tickers (e.g. `/deep-research-stock NVDA TSLA IVV NOW LITE`). Runs the deep-stock-research analysis interactively in this Claude Code session — no `claude -p` subprocess, no `run-workflow.py`. The user-supplied ticker list overrides the workflow JSON's hardcoded watchlist. Output HTML goes to `finance-workflows/reports/deep-stock-research/<today>.html`. This is the post-2026-06-15 path for deep stock research to stay on the interactive subscription pool instead of the new credit pool.
+description: Use when the user invokes /deep-research-stock with a space- or comma-separated list of stock tickers (e.g. `/deep-research-stock NVDA TSLA IVV NOW LITE`). An optional `|` splits Tier A from Tier B (`TSLA GOOG NVDA MSFT MU | KGC RDDT`); without it the first 3 are Tier A. Runs the deep-stock-research analysis interactively in this Claude Code session — no `claude -p` subprocess, no `run-workflow.py`. The user-supplied ticker list overrides the workflow JSON's hardcoded watchlist. Output HTML goes to `finance-workflows/reports/deep-stock-research/<today>.html`. This is the post-2026-06-15 path for deep stock research to stay on the interactive subscription pool instead of the new credit pool.
 ---
 
 # deep-research-stock
@@ -11,6 +11,20 @@ The user wants deep stock research on a custom watchlist they passed in `args`.
 
 `args` is a string of tickers separated by spaces or commas (e.g. `NVDA TSLA IVV NOW LITE RDDT COIN`). Split it into an ordered list.
 
+**`|` 分隔符(2026-08-21 加入)** — args 可以含一個 `|`,把 Tier A 與 Tier B 明確切開:
+
+```
+/deep-research-stock TSLA GOOG NVDA MSFT MU | KGC RDDT SPCX IVV
+   → Tier A(5):TSLA GOOG NVDA MSFT MU
+   → Tier B(4):KGC RDDT SPCX IVV
+```
+
+規則:
+- **有 `|`** → 左邊全部是 Tier A,右邊全部是 Tier B。左邊幾檔就幾檔,不再固定 3。
+- **沒有 `|`** → 沿用舊行為,前 3 檔 Tier A、第 4 檔起 Tier B。
+- `|` 左邊空(`| AAA BBB`)→ 全部 Tier B;右邊空(`AAA BBB |`)→ 全部 Tier A。
+- 出現**兩個以上 `|`** → 不要猜,問使用者:「args 裡有多個 `|`,請確認 Tier A 是哪幾檔」。
+
 If `args` is empty or contains no valid ticker-looking token, ask the user:
 > 「請給我今天要做深度研究的 tickers,用空白分隔。例如:NVDA TSLA IVV NOW」
 and stop until they answer.
@@ -19,19 +33,36 @@ and stop until they answer.
 
 Order matters — the user is intentional about which tickers get the deepest treatment.
 
-- **Tier A** = first 3 tickers in the list (full 7-layer analysis, includes SEC EDGAR 10-K reading)
-- **Tier B** = 4th onward (compact 4-layer: §1 概覽 / §4 財務快照精簡 / §6 風險精簡 / §7 投資邏輯)
+- **Tier A** = `|` 左邊的全部;沒有 `|` 時為前 3 檔(full 7-layer analysis, includes SEC EDGAR 10-K reading)
+- **Tier B** = `|` 右邊的全部;沒有 `|` 時為第 4 檔起(compact 4-layer: §1 概覽 / §4 財務快照精簡 / §6 風險精簡 / §7 投資邏輯)
 - **ETF override**: tickers like `SPY`, `QQQ`, `IVV`, `VOO`, `VTI`, `GLD`, `SLV`, `EFA`, `EEM`, `XL?`, `ARK?` etc. **skip EDGAR even if they land in Tier A position** (no 10-K filing). They keep the rest of the Tier A treatment (Yahoo metadata, macro overlay, 7-layer write-up) but with "資料來源:Yahoo ETF metadata + FRED 總經背景" framing.
 
 State the tier assignment to the user at the start (e.g. "Tier A: NVDA / TSLA / IVV(ETF,跳過 EDGAR); Tier B: NOW / LITE / RDDT / COIN") so they can correct order if needed.
 
+### Tier A 軟上限 6
+
+Tier A 唯一真正貴的東西是 **10-K 實讀**(每份 Item 1 + Item 1A 約 6–10 萬 token,常需
+continue-read 第二段)。6 份以上就有相當機率在寫報告前把上下文吃光 —— 而上下文用盡的
+症狀是**後段品質靜默下滑**,不是明確報錯,我不一定當場察覺。
+
+所以 **Tier A > 6 時,先講一句再跑**:
+
+> ⚠️ 這次有 8 檔 Tier A(8 份 10-K 實讀),很可能在寫報告前吃掉上下文,後段品質會下滑
+> 而且不一定看得出來。建議拆兩次跑(各 4 檔),或把其中幾檔降到 Tier B。要照跑也可以,你說。
+
+**這是軟上限:使用者說「照跑」就照跑,不擋。** 提醒是給資訊,不是代為決定 —— 和下面
+ETF 那條同一個原則。
+
+若真的照跑超量:優先確保**每檔的 §2/§6 都是當次實讀寫的**(見 Hard rules),寧可在
+Stage 3 的跨檔綜述寫短一點,也不要為了湊篇幅而讓某檔的 10-K 內容變成憑印象補。
+
 ### ETF 佔用 Tier A 名額時要主動提醒
 
-Tier A 真正稀缺的資源是 **10-K 實讀**(每份 Item 1A 約 6–10 萬 token,所以只給 3 個名額)。
-ETF 沒有 10-K —— 排進前 3 等於**浪費一個深讀額度**,而 Tier A 與 Tier B 對 ETF 的實質
+Tier A 真正稀缺的資源是 **10-K 實讀**(每份 Item 1A 約 6–10 萬 token,名額有限)。
+ETF 沒有 10-K —— 排進 Tier A 等於**浪費一個深讀額度**,而 Tier A 與 Tier B 對 ETF 的實質
 差異很小(兩者都只有 Yahoo metadata + zone JSON,差別僅在寫得長一些)。
 
-所以宣告 tier 分派時,**若有 ETF 落在前 3 位,必須加一句提醒**:
+所以宣告 tier 分派時,**若有 ETF 落在 Tier A,必須加一句提醒**:
 
 > ⚠️ IVV 是 ETF(無 10-K),佔掉一個 Tier A 名額 —— 本次實際只會深讀 2 份年報。
 > 想換一檔個股上來深讀的話現在說,我還沒開始跑。
@@ -90,7 +121,7 @@ rest of the report proceeds unaffected.
 
 Loop over the parsed ticker list in order.
 
-**Tier A flow** (first 3, non-ETF):
+**Tier A flow** (Tier A 名單中的個股):
 1. `mcp__yahoo-finance__get_stock_info(ticker=...)` — snapshot
 2. `mcp__edgar__edgar_latest_annual(ticker=...)` → `mcp__edgar__edgar_fetch_text(url=..., max_chars=60000, offset=0)` for Item 1. Business + Item 1A. Risk Factors. Continue-read with `offset=<end>` if needed. If the fetch overflows and is saved to a file, or you delegate the read to a subagent, **you MUST have the actual 10-K content in hand before step 4** — see the hard rule below.
 3. Optional: `mcp__web-fetch__web_extract_article` for recent news only if a specific event (earnings, product launch, geopolitical) in past 7 days is worth quoting. Skip if no clear hit — never fabricate news.
@@ -108,14 +139,14 @@ Loop over the parsed ticker list in order.
    - 若 `market.data_is_stale` 為真:價格一律寫「<last_bar_date> 收盤」不寫「今天」
    - `mode == "degraded"`:改一行「上市未滿 60 個交易日,結構樣本不足,僅提供位置參考,不產出買賣區間」+ 位置百分位
 
-**Tier A flow for ETF** (ETF lands in first 3):
+**Tier A flow for ETF** (ETF 落在 Tier A 名單):
 1. `mcp__yahoo-finance__get_stock_info(ticker=...)` — ETF metadata (longBusinessSummary, totalAssets, yield, expenseRatio, navPrice)
 2. **Skip EDGAR** — ETFs file N-1A/N-CSR, not 10-K. The prompt's EDGAR step doesn't apply.
 3. Write framework §1-§7 from "ETF macro anchor" perspective: §2 = "tracks XYZ index", §3 = sector exposure breakdown if Yahoo provides it, §5 = "ETF 不適用個股估值 — 改評相對指數位置與費用率", §6 = systematic risk + 總經連動, §7 = 大盤錨視角。
 4. Make explicit in §1: "本檔為 ETF,以下分析以指數成分 + 總經錨為主,跳過 10-K(ETF 沒有此類年報)。"
 5. Write **§8** same shape as Tier A(ETF 適用相同 SMC 邏輯 — index 價量結構清晰,比個股更適合)。
 
-**Tier B flow** (4th onward, including ETFs in that range):
+**Tier B flow** (Tier B 名單,含落在其中的 ETF):
 1. `mcp__yahoo-finance__get_stock_info(ticker=...)` only
 2. **Strict ban** on `mcp__edgar__*` and `mcp__web-fetch__*` (token control)
 3. Write framework §1 (1-2 sentences from `longBusinessSummary`) + §4 slim (6-7 key fields only) + §6 slim (3 bullets: business + macro link) + §7 full (direction + confidence + 3-5 watch points)
