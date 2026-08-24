@@ -112,6 +112,42 @@ twse_three_investors = {
 持股 %」,**不是**每日三大法人買賣超金額 — 別呼叫它。三大法人已由 extras
 JSON 提供,見 4a。
 
+### 4c. 讀昨日新聞聚合(news digest)
+
+用 `Read` 讀 `reports/morning-briefing/_news/${DATE}.json`(由 `fetch_news_digest.py`
+在 shell driver 預先產出)。結構:
+
+```
+{
+  "window_start": iso,           # 上一次 morning-briefing 執行時點(≈昨日 08:00 TPE)
+  "window_end":   iso,           # 本次執行時點(≈今日 07:00 TPE)
+  "counts":       { feed: n, ... },
+  "items": [
+    { "ts": iso, "feed": name, "title": str, "url": str, "summary": str },
+    ...  # 已由腳本按 URL/標題兩層去重,新→舊排序
+  ]
+}
+```
+
+**這個檔案是 §Five things 的主要素材來源**。腳本已做確定性去重,你的任務是
+在其上做:
+
+1. **分群**(不要按 feed,按主題):美股/總經 · 亞洲/台股 · 加密/商品 · 政治/監理
+2. **重要性排序** — 影響大盤 > 影響單一大型股 > 個股利好利空。同一事件多源覆蓋
+   時代表市場關注度高,優先入選。
+3. **選 5 條**填 §Five things。每條寫 2-3 句:先事實,再「為什麼今天對台股/夜盤重要」。
+4. **來源標註** — 每條末尾加 `(feed_name)`,例:`(bloomberg)`、`(cnbc)`。若跨兩家以上,寫 `(bloomberg + cnbc)`。
+5. **與 tape 訊號共振** — 若某條新聞正好解釋一個 tape 異常(例:BTC funding
+   衝高有一條 ETF 通過新聞、VIX backwardation 對應地緣事件),主動連起來,
+   放在 §Editor's take 或 §Five things 的第 1 條位置。
+
+**不要做的**:
+- 不要把腳本挑出的 headline 逐字抄成 5 條(那沒有增值)。你的價值在「為什麼重要」。
+- 一則消息若只有 investing.com 單源、且明顯是轉述,可以忽略(投機新聞優先度低)。
+- 標題若含「rumour / sources say / could / may」而未有第二方證實,措辭必用「傳」「據報」「未證實」。
+- 若 `_news/${DATE}.json` 不存在或 items 為空,§Five things 改標「昨日新聞:
+  聚合來源全部不可用」並用你能從 tape 訊號推得的 5 條要點填補,不要中止報告。
+
 ### 5. (best-effort)Fed 新聞稿
 
 呼叫 `mcp__rss__rss_fetch(url="https://www.federalreserve.gov/feeds/press_all.xml", max_items=10)`,

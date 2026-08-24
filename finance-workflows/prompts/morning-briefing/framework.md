@@ -28,10 +28,15 @@
    不寫推論。
 
 3. **Five things (why it matters)** — numbered 1-5,每條:
-   - 標題 1 行(粗體事件 + 時間 + consensus 或數字)
-   - 內文 1-2 句 why it matters(不是 prediction,是 framing)
-   - 選材原則:今晚到明早會發生的 5 件最該關注的事 — FOMC speakers、CPI/PPI、
-     大額國債標售、財報、地緣事件、加密 ETF 大流向異動、台股盤前異常。
+   - 標題 1 行(粗體事件 / 標題)
+   - 內文 2-3 句:先寫事實 + 時間,再寫「為什麼今天對台股/夜盤重要」
+   - **主要素材來源:昨日新聞聚合 `_news/${DATE}.json`**(6 家公開 RSS
+     [MarketWatch / CNBC / CoinDesk / Bloomberg / Yahoo / Investing.com]經去重的
+     ≈40–80 條 headline,涵蓋窗口 = 上次 briefing → 現在)
+   - 每條末尾標註 `(feed_name)` 或 `(feed_a + feed_b)`,方便讀者回溯來源
+   - 選材原則:**已發生 + 有市場影響 > 尚未發生**;跨兩家以上來源覆蓋 = 市場關注度證據
+   - 若某條新聞正好解釋 tape 訊號的異常(例:BTC funding 衝高 + ETF 通過),
+     把它排第 1 條,讓 §Editor's take 得以延伸
 
 4. **Today's calendar (TPE)** — 一張小表,固定欄位 `Time | Event | Consensus | Prior`。
    來源:
