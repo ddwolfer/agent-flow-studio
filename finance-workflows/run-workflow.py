@@ -302,9 +302,23 @@ def main(argv=None):
         chrome = next((c for c in chrome_candidates if pathlib.Path(c).exists()), None)
         if chrome:
             pdf_path = output_abs.with_suffix(".pdf")
-            subprocess.run([chrome, "--headless", f"--print-to-pdf={pdf_path}",
-                            str(output_abs)], cwd=str(root), check=False,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Chrome headless has hung indefinitely in the past (2026-08-25:
+            # crypto-daily PDF stuck 32h → blocked next day's launchd). PDF is
+            # best-effort per this block's comment; timeout + explicit kill
+            # keeps a hung Chrome from freezing the whole pipeline.
+            try:
+                subprocess.run([chrome, "--headless",
+                                f"--print-to-pdf={pdf_path}", str(output_abs)],
+                               cwd=str(root), check=False, timeout=180,
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+            except subprocess.TimeoutExpired:
+                print(f"[pdf] Chrome timed out after 180s — skipping PDF for "
+                      f"{output_abs.name}", file=sys.stderr)
+                # Kill any surviving Chrome + helpers spawned for THIS pdf.
+                subprocess.run(["pkill", "-f", f"--print-to-pdf={pdf_path}"],
+                               check=False, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
 
     # Optional history (best-effort)
     if cfg.history is not None:
