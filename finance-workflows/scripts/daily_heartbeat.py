@@ -106,6 +106,23 @@ def _load_env(path: pathlib.Path) -> dict:
     return out
 
 
+# Some workflows have driver shell scripts that do deterministic pre-fetch
+# before invoking run-workflow.py. Backfilling with plain run-workflow.py
+# skips the pre-fetch and produces reports with silent gaps (§大週期 空的
+# is the crypto-daily failure mode — 2026-08-27 fix).
+_DRIVER_SCRIPTS = {
+    "morning-briefing": "scripts/morning_briefing.sh",
+    "crypto-daily":     "scripts/crypto_daily.sh",
+}
+
+
+def _backfill_cmd(name: str) -> str:
+    """Prefer the driver shell script when one exists; else fall back to runner."""
+    if name in _DRIVER_SCRIPTS:
+        return f"bash {_DRIVER_SCRIPTS[name]}"
+    return f"mcp/.venv/bin/python run-workflow.py {name}"
+
+
 def check_launchd_reports(today: str, weekday: int) -> list[str]:
     """Return list of gap descriptions for missing workflow reports."""
     gaps = []
@@ -117,7 +134,7 @@ def check_launchd_reports(today: str, weekday: int) -> list[str]:
         if not html.exists():
             gaps.append(
                 f"• {name}:今日無報告 → 補跑 "
-                f"`cd finance-workflows && mcp/.venv/bin/python run-workflow.py {name}`"
+                f"`cd finance-workflows && {_backfill_cmd(name)}`"
             )
     return gaps
 

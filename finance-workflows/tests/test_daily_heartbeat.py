@@ -125,3 +125,31 @@ def test_present_report_is_not_a_gap(monkeypatch, tmp_path):
 
 # 廣場發文巡檢的兩個測試已於 2026-08-19 隨 check_square() 一併移除
 # (Write-to-Earn 實驗結束,「今日無長文」不再是缺口)。
+
+
+# ── backfill command uses driver script when one exists ─────────────────────
+# Motivation: 2026-08-27 — user ran the plain runner to backfill crypto-daily
+# after a 32h Chrome hang, and the report came out with 大週期 空的 because
+# it skipped fetch_btc_cycle.py. The heartbeat's suggested command must not
+# lead the user (or future-me) into this trap.
+
+def test_backfill_uses_driver_script_when_available():
+    assert hb._backfill_cmd("crypto-daily") == "bash scripts/crypto_daily.sh"
+    assert hb._backfill_cmd("morning-briefing") == "bash scripts/morning_briefing.sh"
+
+
+def test_backfill_falls_back_to_runner_for_workflows_without_driver():
+    # us-macro has no driver script — pre-fetch isn't needed for that workflow.
+    assert hb._backfill_cmd("us-macro") == "mcp/.venv/bin/python run-workflow.py us-macro"
+
+
+def test_gap_message_embeds_driver_command(monkeypatch, tmp_path):
+    reports = tmp_path / "reports"
+    (reports / "crypto-daily").mkdir(parents=True)
+    monkeypatch.setattr(hb, "REPORTS", reports)
+    monkeypatch.setattr(hb, "WATCHED_WORKFLOWS", ["crypto-daily"])
+    monkeypatch.setattr(hb, "plist_weekdays", lambda n, d=None: None)
+    gaps = hb.check_launchd_reports("2026-08-27", 2)
+    assert len(gaps) == 1
+    assert "bash scripts/crypto_daily.sh" in gaps[0]
+    assert "run-workflow.py crypto-daily" not in gaps[0]  # ensure old form gone
