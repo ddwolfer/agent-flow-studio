@@ -121,6 +121,16 @@ _TRANSIENT_PATTERNS = (
     "Read timeout",
     "Connect timeout",
     "fetch failed",
+    # DNS resolution failures — real hit on 2026-09-01 07:00 (morning-briefing
+    # + crypto-daily both died with "Can't reach the API server ... (ENOTFOUND)"
+    # during a ~30-min network hiccup). us-macro ran later and succeeded, so
+    # this is textbook transient. Node.js surfaces DNS failures as ENOTFOUND
+    # (permanent NXDOMAIN) or EAI_AGAIN (temporary). Both belong here — retry
+    # will either recover (transient) or fail identically (real DNS misconfig).
+    "Can't reach the API server",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "getaddrinfo",
 )
 
 

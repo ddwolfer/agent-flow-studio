@@ -39,6 +39,14 @@ def test_is_transient_detects_known_patterns():
     assert m._is_transient("Request timed out")
     assert m._is_transient("Operation timed out")
     assert m._is_transient("fetch failed")
+    # DNS failures (regression: 2026-09-01 07:00 morning-briefing + crypto-daily
+    # both died with "API Error: Can't reach the API server ... (ENOTFOUND)".
+    # Neither had a matching pattern → no retry → user got no reports).
+    assert m._is_transient(
+        "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"
+    )
+    assert m._is_transient("Error: getaddrinfo ENOTFOUND api.anthropic.com")
+    assert m._is_transient("getaddrinfo EAI_AGAIN")
     assert not m._is_transient("Error: max-turns exceeded")
     assert not m._is_transient("")
 
