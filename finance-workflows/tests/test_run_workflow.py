@@ -47,6 +47,14 @@ def test_is_transient_detects_known_patterns():
     )
     assert m._is_transient("Error: getaddrinfo ENOTFOUND api.anthropic.com")
     assert m._is_transient("getaddrinfo EAI_AGAIN")
+    # Anthropic 5xx mid-stream (regression: 2026-09-02 07:00 morning-briefing
+    # died on this exact string after reading extras + news files. Only that
+    # one workflow failed — not auth, not DNS).
+    assert m._is_transient(
+        "API Error: Server error mid-response. The response above may be incomplete."
+    )
+    assert m._is_transient('{"type":"overloaded_error"}')
+    assert m._is_transient("500 Internal server error")
     assert not m._is_transient("Error: max-turns exceeded")
     assert not m._is_transient("")
 

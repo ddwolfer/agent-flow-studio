@@ -131,6 +131,15 @@ _TRANSIENT_PATTERNS = (
     "ENOTFOUND",
     "EAI_AGAIN",
     "getaddrinfo",
+    # Anthropic-side hiccups mid-response — real hit on 2026-09-02 07:00
+    # (morning-briefing died after reading extras + news, log tail was
+    # "API Error: Server error mid-response. The response above may be
+    # incomplete."). crypto-daily + us-macro same morning succeeded → not
+    # auth, not DNS; just an intermittent 5xx. Retryable.
+    "Server error mid-response",
+    "response above may be incomplete",
+    "overloaded_error",
+    "Internal server error",
 )
 
 
