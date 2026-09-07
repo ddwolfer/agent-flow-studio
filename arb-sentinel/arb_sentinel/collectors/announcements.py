@@ -177,24 +177,44 @@ def fetch_binance(timeout=20.0, page_size=20):
     return anns, errors
 
 
-def fetch_all(cfg=None, language="zh_CN"):
-    """All exchange announcements, each tagged with `_exchange`. ALWAYS
-    fetches bitget + okx + binance — every feed is keyless, so there is no
-    cost / authentication reason to subset them.
+# Announcement sources, keyed by the name used in `announcement_exchanges`.
+# Every feed is keyless — selection here is about SIGNAL QUALITY, not cost or
+# auth. Binance is implemented and still callable, just off by default since
+# 2026-09-07 (catalog 93/128 is mostly low-value campaign spam).
+_ANN_SOURCES = {
+    "bitget":  lambda language: fetch_bitget(language=language),
+    "okx":     lambda language: fetch_okx(),
+    "binance": lambda language: fetch_binance(),
+}
 
-    Deliberately does NOT read `cfg.exchanges` even when cfg is provided:
-    that field controls signed RATE collector selection (only the exchanges
-    you hold API keys for), which has nothing to do with promo heads-up
-    coverage. An operator running `exchanges: [okx]` because OKX is their
-    only API key should still receive Binance/Bitget Earn-promo heads-up
-    automatically. Never raises."""
+DEFAULT_ANN_EXCHANGES = ("bitget", "okx")
+
+
+def fetch_all(cfg=None, language="zh_CN"):
+    """Announcements from the configured exchanges, each tagged `_exchange`.
+
+    Source selection comes from `cfg.announcement_exchanges`
+    (default: bitget + okx — Binance dropped 2026-09-07 for signal-to-noise).
+
+    Deliberately does NOT read `cfg.exchanges`: that field controls signed
+    RATE collector selection (only the exchanges you hold API keys for),
+    which has nothing to do with promo heads-up coverage. An operator running
+    `exchanges: [okx]` because OKX is their only API key still receives
+    Bitget promo heads-up. Never raises."""
+    wanted = getattr(cfg, "announcement_exchanges", None) or list(DEFAULT_ANN_EXCHANGES)
     anns, errors = [], []
-    b, e1 = fetch_bitget(language=language)
-    for a in b:
-        a["_exchange"] = "bitget"
-    anns.extend(b); errors.extend(e1)
-    o, e2 = fetch_okx()
-    anns.extend(o); errors.extend(e2)
-    bn, e3 = fetch_binance()
-    anns.extend(bn); errors.extend(e3)
+    for name in wanted:
+        fetcher = _ANN_SOURCES.get(str(name).strip().lower())
+        if fetcher is None:
+            errors.append(f"unknown announcement source: {name!r}")
+            continue
+        try:
+            items, errs = fetcher(language)
+        except Exception as e:                              # pragma: no cover
+            errors.append(f"{name} ann {type(e).__name__}: {e}")
+            continue
+        for a in items:
+            # fetch_okx / fetch_binance already stamp _exchange; bitget doesn't.
+            a.setdefault("_exchange", name)
+        anns.extend(items); errors.extend(errs)
     return anns, errors

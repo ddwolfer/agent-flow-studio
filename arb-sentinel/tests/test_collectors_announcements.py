@@ -147,23 +147,54 @@ def test_fetch_all_ignores_cfg_exchanges(monkeypatch):
                         lambda *a, **kw: (calls.append("binance") or [], []))
 
     import types
+    # cfg has NO announcement_exchanges → defaults apply; `exchanges: [okx]`
+    # must not narrow the announcement feeds.
     cfg_only_okx = types.SimpleNamespace(exchanges=["okx"])
     announcements.fetch_all(cfg_only_okx)
-    assert set(calls) == {"bitget", "okx", "binance"}
+    assert set(calls) == {"bitget", "okx"}
 
 
-def test_fetch_all_defaults_to_all_three_when_cfg_missing(monkeypatch):
+def test_fetch_all_defaults_to_bitget_okx_when_cfg_missing(monkeypatch):
+    # 2026-09-07: Binance dropped from the default set — catalog 93/128 volume
+    # is mostly low-value campaign spam that drowned the Bitget/OKX signals.
     calls = []
     monkeypatch.setattr(announcements, "fetch_bitget", lambda *a, **kw: (calls.append("bitget") or [], []))
     monkeypatch.setattr(announcements, "fetch_okx", lambda *a, **kw: (calls.append("okx") or [], []))
     monkeypatch.setattr(announcements, "fetch_binance", lambda *a, **kw: (calls.append("binance") or [], []))
     announcements.fetch_all()
-    assert set(calls) == {"bitget", "okx", "binance"}
+    assert set(calls) == {"bitget", "okx"}
+    assert "binance" not in calls
 
 
-def test_fetch_all_includes_binance(monkeypatch):
-    # All three exchanges return one item each; fetch_all must surface all
-    # three tagged with the right _exchange value.
+def test_fetch_all_honours_explicit_announcement_exchanges(monkeypatch):
+    # Binance stays implemented and callable — it is off by DEFAULT, not removed.
+    # Re-enabling is a one-line config change, so pin that it still works.
+    calls = []
+    monkeypatch.setattr(announcements, "fetch_bitget", lambda *a, **kw: (calls.append("bitget") or [], []))
+    monkeypatch.setattr(announcements, "fetch_okx", lambda *a, **kw: (calls.append("okx") or [], []))
+    monkeypatch.setattr(announcements, "fetch_binance", lambda *a, **kw: (calls.append("binance") or [], []))
+
+    import types
+    cfg = types.SimpleNamespace(announcement_exchanges=["binance"])
+    announcements.fetch_all(cfg)
+    assert calls == ["binance"]
+
+
+def test_fetch_all_reports_unknown_source_without_raising(monkeypatch):
+    monkeypatch.setattr(announcements, "fetch_bitget", lambda *a, **kw: ([], []))
+    monkeypatch.setattr(announcements, "fetch_okx", lambda *a, **kw: ([], []))
+    import types
+    cfg = types.SimpleNamespace(announcement_exchanges=["bitget", "kraken"])
+    anns, errors = announcements.fetch_all(cfg)
+    assert anns == []
+    assert any("kraken" in e for e in errors)
+
+
+def test_fetch_all_tags_exchange_on_every_item(monkeypatch):
+    # Every returned item must carry the right _exchange tag (the heads-up
+    # message names the exchange per line — see feedback_arb_alert_label_exchange).
+    # Binance is included here explicitly to prove the tagging path still works
+    # for it even though it is off by default.
     bitget_payload = {"code": "00000", "data": [
         {"annId": "bg1", "annTitle": "Bitget 活动", "annDesc": "", "annUrl": "u",
          "annType": "latest_news", "cTime": "1"}]}
@@ -186,7 +217,9 @@ def test_fetch_all_includes_binance(monkeypatch):
         raise AssertionError(f"unexpected URL: {url}")
 
     monkeypatch.setattr(httpx.Client, "get", fake_get)
-    anns, errors = announcements.fetch_all()
+    import types
+    cfg = types.SimpleNamespace(announcement_exchanges=["bitget", "okx", "binance"])
+    anns, errors = announcements.fetch_all(cfg)
     exchanges = {a["_exchange"] for a in anns}
     assert exchanges == {"bitget", "okx", "binance"}
 

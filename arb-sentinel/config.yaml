@@ -17,6 +17,12 @@ assets: [BTC, ETH, USDT, USDC]
 exchanges: [okx, binance, bitget]   # all three live (M4 signed collectors)
 own_funds_mode: true        # true -> borrow_apr=0, net_spread=apr (M1 default)
 announcement_llm: false     # false = deterministic heads-up (no LLM/Groq, zero tokens)
+
+# 哪些交易所的活動公告要進 heads-up。與上面的 `exchanges` 無關（那個是簽名
+# 費率 collector 的選擇,看你有哪些 API key)。
+# 2026-09-07 拿掉 binance:catalog 93/128 的活動量太大且多半是低價值行銷
+# campaign,把真正值得看的 Bitget/OKX 訊號淹掉了。要恢復就把 binance 加回來。
+announcement_exchanges: [bitget, okx]
                             # true  = Groq quantitative promo parsing (APR/dates -> graded alert)
 
 # ── carry-guardian (Bitget carry position monitoring) ────────────────────

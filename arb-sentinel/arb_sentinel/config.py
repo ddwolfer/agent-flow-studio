@@ -14,6 +14,11 @@ class Settings:
     bitget_api_key: str = ""; bitget_api_secret: str = ""; bitget_api_passphrase: str = ""
     groq_api_key: str = ""
     announcement_llm: bool = False
+    # Which exchanges' promo announcements feed the heads-up. Independent of
+    # `exchanges` (that one gates signed RATE collectors by API key). Binance
+    # was dropped 2026-09-07 — its catalog 93/128 volume is mostly low-value
+    # campaign spam and it drowned the Bitget/OKX signals worth reading.
+    announcement_exchanges: list = None
     # ── carry-guardian (Slice E) ─────────────────────────────────────────
     telegram_topic_carry: str = ""
     carry_enabled: bool = False
@@ -98,6 +103,10 @@ def load_settings(config_path: pathlib.Path | None = None) -> Settings:
         bitget_api_passphrase=os.environ.get("BITGET_API_PASSPHRASE", ""),
         groq_api_key=os.environ.get("GROQ_API_KEY", ""),
         announcement_llm=raw.get("announcement_llm", False),
+        announcement_exchanges=[
+            str(x).strip().lower()
+            for x in (raw.get("announcement_exchanges") or ["bitget", "okx"])
+        ],
         # ── carry-guardian ──────────────────────────────────────────────
         telegram_topic_carry=os.environ.get("TELEGRAM_TOPIC_CARRY", ""),
         **_carry_settings(raw.get("carry") or {}),
