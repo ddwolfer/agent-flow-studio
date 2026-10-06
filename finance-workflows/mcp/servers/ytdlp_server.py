@@ -182,7 +182,8 @@ def _track_query(url: str) -> dict:
 def _caption_candidates(info: dict, langs: list[str]) -> list[tuple[str, dict]]:
     """Ordered (label, track) list of caption tracks that are VERBATIM speech.
 
-    1. Uploader-provided `subtitles` in `langs` order (human-made).
+    1. Uploader-provided `subtitles` in `langs` order (human-made), limited to
+       the spoken language when YouTube reports it.
     2. Auto-generated ASR tracks in the video's ORIGINAL language only.
 
     YouTube's `automatic_captions` also lists machine TRANSLATIONS of the ASR
@@ -195,12 +196,16 @@ def _caption_candidates(info: dict, langs: list[str]) -> list[tuple[str, dict]]:
     translated tracks are never candidates; a wrong-language video falls
     through to whisper instead.
     """
+    orig = _primary(info.get("language"))
     out = []
     for lang in langs:
+        # An uploader track in another language is a (human) TRANSLATION —
+        # still not the speaker's words. Only filterable when orig is known.
+        if orig and _primary(lang) != orig:
+            continue
         for t in (info.get("subtitles") or {}).get(lang) or []:
             out.append((f"subtitles:{lang}", t))
 
-    orig = _primary(info.get("language"))
     auto = []
     for key, tracks in (info.get("automatic_captions") or {}).items():
         for t in tracks or []:
@@ -216,7 +221,17 @@ def _caption_candidates(info: dict, langs: list[str]) -> list[tuple[str, dict]]:
     # Prefer keys the caller asked for, then the rest (stable within each).
     rank = {l: i for i, l in enumerate(langs)}
     auto.sort(key=lambda kt: rank.get(kt[0][5:].removesuffix("-orig"), len(langs)))
-    return out + auto
+    # The same track is often listed twice ("en" and "en-orig" share one
+    # timedtext URL; langs may repeat). Fetching it again can't succeed where
+    # the first try failed — it only spends rate limit.
+    seen, unique = set(), []
+    for label, t in out + auto:
+        u = t.get("url")
+        if u in seen:
+            continue
+        seen.add(u)
+        unique.append((label, t))
+    return unique
 
 
 def _open_caption(ydl, track: dict) -> str:
@@ -230,17 +245,22 @@ def _open_caption(ydl, track: dict) -> str:
     session request instead of failing the track.
     """
     from yt_dlp.networking import Request
-    from yt_dlp.networking.exceptions import NoSupportingHandlers
+    from yt_dlp.networking.impersonate import ImpersonateTarget
     headers = track.get("http_headers") or {}
     if track.get("impersonate"):
-        from yt_dlp.networking.impersonate import ImpersonateTarget
-        req = Request(track["url"], headers=headers,
-                      extensions={"impersonate": ImpersonateTarget()})
+        target = ImpersonateTarget()
+        # Pre-check, as yt-dlp's subtitle downloader does: when no handler can
+        # impersonate, YoutubeDL.urlopen raises a plain RequestError (it wraps
+        # NoSupportingHandlers), so catching that type afterwards never fires.
         try:
+            available = ydl._impersonate_target_available(target)
+        except AttributeError:          # private API moved: just try it
+            available = True
+        if available:
+            req = Request(track["url"], headers=headers,
+                          extensions={"impersonate": target})
             with ydl.urlopen(req) as resp:
                 return resp.read().decode("utf-8", "replace")
-        except NoSupportingHandlers:
-            pass
     with ydl.urlopen(Request(track["url"], headers=headers)) as resp:
         return resp.read().decode("utf-8", "replace")
 
@@ -329,6 +349,8 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
                     t = _open_caption(ydl, s)
                 except Exception as e:
                     rejected.append(f"{label}: {type(e).__name__}: {e}")
+                    if getattr(e, "status", None) == 429:   # yt-dlp HTTPError
+                        break           # rate-limited: more GETs only dig deeper
                     continue
                 if _looks_like_vtt(t):
                     return t
@@ -361,7 +383,8 @@ def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
     #    and the fallback branch was never reached.)
     raw = None
     try:
-        raw = _fetch_captions(video_url, [language, "zh-TW", "zh-Hant", "zh", "en"])
+        raw = _fetch_captions(video_url, list(dict.fromkeys(
+            [language, "zh-TW", "zh-Hant", "zh", "en"])))
     except Exception as e:
         errors.append(f"captions: {e}")
     if raw:

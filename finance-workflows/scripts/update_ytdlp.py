@@ -21,8 +21,12 @@ import sys
 PY = sys.executable
 SPEC = "yt-dlp[default,curl-cffi]"
 PIP_TIMEOUT_SEC = 240          # whole pip run; pip's own --timeout is per request
-_HEALTH = ("import yt_dlp, yt_dlp_ejs; "
-           "print(yt_dlp.version.__version__)")
+# Import what actually breaks across releases: yt-dlp loads its YouTube
+# extractor lazily, so `import yt_dlp` alone proves little. Report the
+# DISTRIBUTION version (importlib.metadata) — for nightlies it differs from
+# yt_dlp.version.__version__ (".dev0" suffix) and only it can be pinned back.
+_HEALTH = ("import yt_dlp, yt_dlp_ejs, yt_dlp.extractor.youtube; "
+           "from importlib.metadata import version; print(version('yt-dlp'))")
 
 
 def _run(cmd, timeout):
@@ -56,7 +60,7 @@ def update(run=_run, channel=None) -> int:
     if now is None and prev:
         # Upgrade (or a half-finished one) left yt-dlp unimportable → roll back.
         run([PY, "-m", "pip", "install", "-q", "--disable-pip-version-check",
-             f"yt-dlp=={prev}"], PIP_TIMEOUT_SEC)
+             f"{SPEC}=={prev}"], PIP_TIMEOUT_SEC)
         restored = installed_version(run)
         print(f"[update_ytdlp] ERROR: post-upgrade health check failed; rolled "
               f"back to {prev} → {'ok' if restored else 'STILL BROKEN'}",

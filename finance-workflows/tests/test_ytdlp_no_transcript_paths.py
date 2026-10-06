@@ -10,6 +10,8 @@
 """
 import importlib.util, io, pathlib, types
 
+import pytest
+
 
 def _load():
     p = pathlib.Path(__file__).parents[1] / "mcp" / "servers" / "ytdlp_server.py"
@@ -106,23 +108,97 @@ def test_unflagged_track_uses_plain_session_request(monkeypatch):
     assert "impersonate" not in calls[0].extensions
 
 
-def test_missing_impersonation_handler_falls_back_to_plain(monkeypatch):
-    m = _load()
-    from yt_dlp.networking.exceptions import NoSupportingHandlers
-    track = {"ext": "vtt", "protocol": "https", "url": "https://tt/en?lang=en",
-             "impersonate": True}
-    calls = []
-    Base = _ydl(_caption_info(track), {track["url"]: VTT}, calls)
+@pytest.fixture
+def local_vtt_server():
+    """127.0.0.1 HTTP server returning WEBVTT; yields (url, hit-counter)."""
+    import http.server, threading
+    hits = []
 
-    class NoCurl(Base):
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            body = VTT.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/vtt")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *a): pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}/en.vtt", hits
+    srv.shutdown()
+
+
+def test_missing_impersonation_handler_falls_back_to_plain(local_vtt_server):
+    """REAL YoutubeDL with the CurlCFFI handler removed (= curl_cffi missing or
+    outside yt-dlp's supported range). Real urlopen wraps NoSupportingHandlers
+    in a plain RequestError, so only a pre-check can route to the fallback —
+    a fake that raises NoSupportingHandlers directly hid this bug once."""
+    m = _load()
+    url, hits = local_vtt_server
+    with m.yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        ydl._request_director.handlers.pop("CurlCFFI", None)
+        out = m._open_caption(ydl, {"url": url, "impersonate": True})
+    assert out.startswith("WEBVTT") and len(hits) == 1
+
+
+def test_impersonation_used_when_handler_available(local_vtt_server):
+    m = _load()
+    url, hits = local_vtt_server
+    with m.yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        if not ydl._impersonate_target_available(ImpersonateTarget()):
+            pytest.skip("curl_cffi impersonation not installed in this venv")
+        assert m._open_caption(ydl, {"url": url, "impersonate": True}).startswith("WEBVTT")
+    assert len(hits) == 1
+
+
+# ── rate-limit hygiene ──────────────────────────────────────────────────────
+def test_same_timedtext_url_listed_twice_is_fetched_once():
+    m = _load()
+    t = {"ext": "vtt", "protocol": "https", "url": "https://tt/x?lang=en"}
+    info = {"language": "en", "subtitles": {},
+            "automatic_captions": {"en": [t], "en-orig": [dict(t)]}}
+    assert len(m._caption_candidates(info, ["en"])) == 1
+
+
+def test_http_429_stops_trying_further_tracks(monkeypatch):
+    m = _load()
+    from yt_dlp.networking.exceptions import HTTPError
+
+    class Resp:                                  # minimal Response for HTTPError
+        status, reason, headers, url = 429, "Too Many Requests", {}, "u"
+        def close(self): pass
+
+    info = {"language": "en", "subtitles": {"en": [
+        {"ext": "vtt", "protocol": "https", "url": "https://tt/human"}]},
+        "automatic_captions": {"en-orig": [
+            {"ext": "vtt", "protocol": "https", "url": "https://tt/asr?lang=en"}]}}
+    calls = []
+
+    class YDL(_ydl(info)):
         def urlopen(self, req):
-            if "impersonate" in req.extensions:
-                calls.append(req)
-                raise NoSupportingHandlers([], [])
-            return super().urlopen(req)
-    monkeypatch.setattr(m.yt_dlp, "YoutubeDL", NoCurl)
-    assert "hello" in m._fetch_captions("https://youtu.be/nocurl", ["en"])
-    assert ["impersonate" in c.extensions for c in calls] == [True, False]
+            calls.append(req)
+            raise HTTPError(Resp())
+    monkeypatch.setattr(m.yt_dlp, "YoutubeDL", YDL)
+    with pytest.raises(RuntimeError, match="429"):
+        m._fetch_captions("https://youtu.be/rl", ["en"])
+    assert len(calls) == 1                       # did not hammer the 2nd track
+
+
+def test_uploader_subtitles_in_other_language_are_skipped_when_known():
+    m = _load()
+    info = {"language": "en", "automatic_captions": {}, "subtitles": {
+        "zh-TW": [{"ext": "vtt", "url": "https://h/zh"}],
+        "en": [{"ext": "vtt", "url": "https://h/en"}]}}
+    assert [l for l, _ in m._caption_candidates(info, ["zh-Hant", "zh-TW", "en"])] \
+        == ["subtitles:en"]
+    # Unknown spoken language: can't tell a translation apart, keep langs order.
+    info["language"] = None
+    assert [l for l, _ in m._caption_candidates(info, ["zh-TW", "en"])] \
+        == ["subtitles:zh-TW", "subtitles:en"]
 
 
 # ── last-resort "description" source ────────────────────────────────────────

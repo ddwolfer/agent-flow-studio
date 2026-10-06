@@ -49,15 +49,37 @@ INITIAL_PROMPT_EN = os.environ.get(
 )
 
 
+# Groq's verbose_json reports the detected language as a NAME ("English").
+_LANG_NAMES = {"english": "en", "chinese": "zh", "mandarin": "zh",
+               "cantonese": "yue", "japanese": "ja", "korean": "ko"}
+DETECT_SEC = 30
+
+
+def _norm_lang(language):
+    """'en-US' / 'English' / 'zh-TW' → Whisper code ('en', 'zh'); None if unknown."""
+    x = (language or "").strip().lower()
+    if not x:
+        return None
+    return _LANG_NAMES.get(x) or x.split("-")[0] or None
+
+
 def _lang_and_prompt(language):
     """Whisper language code + matching vocabulary prompt.
 
-    `language` is YouTube's reported spoken language ("en", "zh-TW", ...) or
-    None. Unknown stays "zh" — the historical default, and the channels that
-    reach the audio path are mostly Chinese (BTV, TiaBTC: no captions at all).
+    Unknown language → (None, None): let Whisper auto-detect, with NO prompt.
+    Never default to "zh": YouTube only reports a language when the video has
+    an ASR caption track or multiple audio tracks, so the audio fallback is
+    exactly where it's usually missing — and forcing zh + a Traditional-
+    Chinese prompt onto English speech makes Whisper TRANSLATE it, which the
+    report would then quote as the speaker's words. transcribe() detects the
+    language first, so this is only the last line of defence.
     """
-    lang = (language or "zh").split("-")[0].lower()
-    return lang, (INITIAL_PROMPT if lang == "zh" else INITIAL_PROMPT_EN)
+    lang = _norm_lang(language)
+    if lang is None:
+        return None, None
+    if lang in ("zh", "yue"):
+        return lang, INITIAL_PROMPT
+    return lang, (INITIAL_PROMPT_EN if lang == "en" else None)
 
 _model = None
 
@@ -136,12 +158,15 @@ def _groq_transcribe(wav: pathlib.Path, dp: pathlib.Path, key: str,
             subprocess.run(["ffmpeg", "-y", "-i", str(wav), "-ss", str(s),
                             "-t", str(GROQ_CHUNK_SEC), str(chunk)],
                            capture_output=True, check=True)
+        data = {"model": GROQ_MODEL, "temperature": "0"}
+        if lang:
+            data["language"] = lang
+        if prompt:
+            data["prompt"] = prompt
         with open(chunk, "rb") as f:
             r = httpx.post(GROQ_URL, headers={"Authorization": f"Bearer {key}"},
                            files={"file": (chunk.name, f, "audio/wav")},
-                           data={"model": GROQ_MODEL, "language": lang,
-                                 "prompt": prompt, "temperature": "0"},
-                           timeout=180.0)
+                           data=data, timeout=180.0)
         r.raise_for_status()
         t = (r.json().get("text") or "").strip()
         if t:
@@ -156,16 +181,57 @@ def _local_transcribe(wav: pathlib.Path, language=None) -> str:
     return "\n".join(s.text.strip() for s in segments if s.text.strip())
 
 
+def _groq_detect(wav: pathlib.Path, dp: pathlib.Path, key: str):
+    """Spoken language of the first DETECT_SEC seconds, via Groq (no prompt)."""
+    import httpx
+    clip = dp / "detect.wav"
+    subprocess.run(["ffmpeg", "-y", "-i", str(wav), "-t", str(DETECT_SEC),
+                    str(clip)], capture_output=True, check=True, timeout=60)
+    with open(clip, "rb") as f:
+        r = httpx.post(GROQ_URL, headers={"Authorization": f"Bearer {key}"},
+                       files={"file": (clip.name, f, "audio/wav")},
+                       data={"model": GROQ_MODEL, "temperature": "0",
+                             "response_format": "verbose_json"},
+                       timeout=60.0)
+    r.raise_for_status()
+    return _norm_lang(r.json().get("language"))
+
+
+def _local_detect(wav: pathlib.Path):
+    # transcribe() detects the language up front and returns segments lazily;
+    # not iterating them means only detection runs.
+    _segments, info = _get_model().transcribe(str(wav), language=None)
+    return _norm_lang(getattr(info, "language", None))
+
+
+def _detect_language(wav: pathlib.Path, dp: pathlib.Path, key):
+    """Best-effort spoken-language detection; None = let Whisper auto-detect."""
+    if key:
+        try:
+            return _groq_detect(wav, dp, key)
+        except Exception:
+            pass
+    try:
+        return _local_detect(wav)
+    except Exception:
+        return None
+
+
 def transcribe(video_url: str, language=None) -> str:
     """Download the video's audio and return its full transcript text.
 
     Prefers Groq (fast, cloud); falls back to local faster-whisper if there is
     no GROQ_API_KEY or Groq fails. Raises only if BOTH paths fail.
+
+    `language` is YouTube's reported spoken language when known; otherwise it
+    is detected from the audio so both engines get the right language and
+    vocabulary prompt (see _lang_and_prompt for why guessing zh is unsafe).
     """
     with tempfile.TemporaryDirectory() as d:
         dp = pathlib.Path(d)
         wav = _download_wav(video_url, dp)
         key = os.environ.get("GROQ_API_KEY")
+        language = _norm_lang(language) or _detect_language(wav, dp, key)
         if key:
             try:
                 text = _groq_transcribe(wav, dp, key, language)

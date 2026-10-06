@@ -55,7 +55,7 @@ def test_broken_upgrade_is_rolled_back(capsys):
     m = _load()
     run = FakeRunner(["2026.08.19", None, "2026.08.19"])
     assert m.update(run, channel="stable") == 1
-    pins = [c for c in run.pip_calls() if "yt-dlp==2026.08.19" in c]
+    pins = [c for c in run.pip_calls() if f"{m.SPEC}==2026.08.19" in c]
     assert pins, "must reinstall the previous version"
     assert "rolled back to 2026.08.19 → ok" in capsys.readouterr().err
 
