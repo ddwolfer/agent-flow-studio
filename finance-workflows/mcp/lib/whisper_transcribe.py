@@ -15,7 +15,9 @@ generative model paraphrases/hallucinates digits and names — exactly the
 finance data that must stay exact. Misheard DIGITS survive even on large-v3,
 so the report layer (prompts/shared/faithfulness.md) cross-checks numbers.
 """
-import os, subprocess, tempfile, pathlib
+import os, subprocess, sys, tempfile, pathlib
+
+DOWNLOAD_TIMEOUT_SEC = int(os.environ.get("STUDIO_YTDLP_DOWNLOAD_TIMEOUT", "600"))
 
 # ── local faster-whisper (offline fallback) ────────────────────────────────────
 MODEL_NAME = os.environ.get("STUDIO_WHISPER_MODEL", "medium")
@@ -50,9 +52,17 @@ def _get_model():
 
 
 def _download_wav(video_url: str, dp: pathlib.Path) -> pathlib.Path:
-    """Download bestaudio and normalize to 16kHz mono wav (small + ASR-ready)."""
+    """Download bestaudio and normalize to 16kHz mono wav (small + ASR-ready).
+
+    Runs yt-dlp as `<this python> -m yt_dlp`, NOT the bare `yt-dlp` on PATH.
+    Regression 2026-10-07: PATH resolved to a separate Homebrew copy frozen at
+    2026.03.17, which YouTube answered with HTTP 403 on every audio download,
+    while the reports only said "exit status 1". One interpreter = one yt-dlp
+    version to keep current (scripts/update_ytdlp.sh), and stderr is surfaced.
+    """
     cmd = [
-        "yt-dlp", "-f", "bestaudio", "-x", "--audio-format", "wav",
+        sys.executable, "-m", "yt_dlp",
+        "-f", "bestaudio", "-x", "--audio-format", "wav",
         "--sleep-requests", "2",  # self-pace to avoid YouTube burst rate-limiting
         "-o", str(dp / "a.%(ext)s"), "--quiet",
     ]
@@ -64,7 +74,19 @@ def _download_wav(video_url: str, dp: pathlib.Path) -> pathlib.Path:
     if cookies and os.path.exists(cookies):
         cmd += ["--cookies", cookies]
     cmd.append(video_url)
-    subprocess.run(cmd, check=True)
+    try:
+        # Bounded: an unbounded child process is the same class of hang as the
+        # 2026-08-25 Chrome PDF stall that froze a launchd label for 32 hours.
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=DOWNLOAD_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"yt-dlp audio download timed out after "
+                           f"{DOWNLOAD_TIMEOUT_SEC}s")
+    if r.returncode != 0:
+        errs = [ln for ln in (r.stderr or "").splitlines() if "ERROR" in ln]
+        tail = errs[-1] if errs else (r.stderr or "").strip()[-300:]
+        raise RuntimeError(f"yt-dlp audio download failed "
+                           f"(exit {r.returncode}): {tail}")
     raw = list(dp.glob("a.*"))
     if not raw:
         raise RuntimeError("yt-dlp produced no audio file")

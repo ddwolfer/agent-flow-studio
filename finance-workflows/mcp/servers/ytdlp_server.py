@@ -137,13 +137,34 @@ def _map_search(info: dict, max_results: int):
     return out
 
 
+def _looks_like_vtt(text: str) -> bool:
+    """A real caption track starts with the WEBVTT header (optionally after a BOM).
+
+    Anything else — notably Google's 429 "Sorry..." bot-check HTML page — must
+    be rejected, not cleaned and passed off as a transcript."""
+    return (text or "").lstrip("﻿ \t\r\n").startswith("WEBVTT")
+
+
 def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
     """
     Fetch captions via yt_dlp, returning raw text WITHOUT writing any files to cwd.
     Uses a TemporaryDirectory as the working path so no .vtt/.srt files leak.
+
+    The caption URL is fetched through the SAME YoutubeDL session
+    (`ydl.urlopen`) that extracted it, so it carries the session's cookies,
+    User-Agent and client headers. Regression 2026-10-07: a bare
+    `requests.get` on the timedtext URL got HTTP 429 + Google's "Sorry..."
+    bot-check page, while `ydl.urlopen` on the very same URL returned real
+    WEBVTT. Worse, that HTML was accepted as "captions", so the whisper
+    fallback never ran and the report said 「字幕抓取回傳 Google 反機器人頁面」.
+
+    Returns None when there is no usable text track (caller falls back to ASR).
+    Raises RuntimeError when tracks existed but every fetch was rejected, so
+    the reason survives into the transcript `error` field if ASR also fails.
     """
     _throttle()
     tmpdir = tempfile.mkdtemp(prefix="ytdlp_caps_")
+    rejected = []
     try:
         opts = {
             "skip_download": True,
@@ -157,24 +178,34 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
         }
         with yt_dlp.YoutubeDL(_harden_opts(opts)) as ydl:
             info = ydl.extract_info(video_url, download=False)
-        subs = {**(info.get("subtitles") or {}), **(info.get("automatic_captions") or {})}
-        import requests
-        for lang in langs:
-            for s in (subs.get(lang) or []):
-                # Only directly-downloadable VTT. Skip HLS/m3u8 subtitle variants:
-                # their "url" is an .m3u8 manifest, and a plain GET returns the
-                # manifest text, not captions (this silently corrupted a source).
-                # No usable text track → return None so the caller falls back to ASR.
-                proto = s.get("protocol") or ""
-                url = s.get("url") or ""
-                if s.get("ext") != "vtt" or proto.startswith("m3u8") or "manifest" in url or not url:
-                    continue
-                t = requests.get(url, timeout=30).text
-                if t.strip():
-                    return t
+            subs = {**(info.get("subtitles") or {}),
+                    **(info.get("automatic_captions") or {})}
+            for lang in langs:
+                for s in (subs.get(lang) or []):
+                    # Only directly-downloadable VTT. Skip HLS/m3u8 subtitle variants:
+                    # their "url" is an .m3u8 manifest, and a plain GET returns the
+                    # manifest text, not captions (this silently corrupted a source).
+                    proto = s.get("protocol") or ""
+                    url = s.get("url") or ""
+                    if (s.get("ext") != "vtt" or proto.startswith("m3u8")
+                            or "manifest" in url or not url):
+                        continue
+                    try:
+                        with ydl.urlopen(url) as resp:
+                            t = resp.read().decode("utf-8", "replace")
+                    except Exception as e:
+                        rejected.append(f"{lang}: {type(e).__name__}: {e}")
+                        continue
+                    if _looks_like_vtt(t):
+                        return t
+                    rejected.append(f"{lang}: non-VTT response "
+                                    f"({t.strip()[:60]!r} — bot-check page?)")
     finally:
         # Always clean up the temp directory, removing any written subtitle files
         shutil.rmtree(tmpdir, ignore_errors=True)
+    if rejected:
+        raise RuntimeError("caption tracks found but none usable: "
+                           + "; ".join(rejected[:3]))
     return None
 
 
@@ -272,23 +303,22 @@ def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
     - truncated: true if text was larger than STUDIO_TRANSCRIPT_MAX_CHARS and was elided
 
     NO subtitle files are written to disk. Always returns a structured dict (never raises).
+
+    Shares _get_full_transcript's cascade (and cache) with ytdlp_transcript_page,
+    so a caption failure falls through to whisper here too — this tool used to
+    carry its own copy of the cascade where a caption exception skipped ASR.
     """
     try:
-        raw = _fetch_captions(video_url, [language, "zh-TW", "zh-Hant", "zh", "en"])
-        if raw:
-            cleaned = _clean_transcript(raw)
-            bounded = _bound_transcript(cleaned)
-            return {"source": "captions", **bounded}
-        if _asr is not None:
-            text = _asr.transcribe(video_url)
-            if text and text.strip():
-                cleaned = _clean_transcript(text)
-                bounded = _bound_transcript(cleaned)
-                return {"source": "whisper", **bounded}
+        info = _get_full_transcript(video_url, language)
     except Exception as e:
         return {"source": "none", "text": "", "full_chars": 0, "truncated": False,
                 "error": f"transcript failed: {e}"}
-    return {"source": "none", "text": "", "full_chars": 0, "truncated": False}
+    if info.get("source", "none") == "none":
+        out = {"source": "none", "text": "", "full_chars": 0, "truncated": False}
+        if "error" in info:
+            out["error"] = info["error"]
+        return out
+    return {"source": info["source"], **_bound_transcript(info["text"])}
 
 @mcp.tool()
 def ytdlp_transcript_page(video_url: str, page: int = 0,

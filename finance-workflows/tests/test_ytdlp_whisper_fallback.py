@@ -75,3 +75,28 @@ def test_whisper_disabled_only_captions_error(monkeypatch):
     r = m._get_full_transcript("https://youtu.be/v")
     assert r["source"] == "none"
     assert "captions: 429" in r["error"]
+
+
+def test_download_transcript_tool_shares_fallback_cascade(monkeypatch):
+    """ytdlp_download_transcript used to keep its own cascade where a caption
+    exception jumped straight to source=none, skipping whisper."""
+    m = _load()
+    m._TRANSCRIPT_CACHE.clear()
+    def boom(url, langs): raise RuntimeError("caption tracks found but none usable")
+    monkeypatch.setattr(m, "_fetch_captions", boom)
+    monkeypatch.setattr(m, "_asr", types.SimpleNamespace(
+        transcribe=lambda url: "audio says hello"))
+    r = m.ytdlp_download_transcript("https://youtu.be/u")
+    assert r["source"] == "whisper"
+    assert "audio says hello" in r["text"]
+    assert r["truncated"] is False
+
+
+def test_download_transcript_tool_surfaces_errors(monkeypatch):
+    m = _load()
+    m._TRANSCRIPT_CACHE.clear()
+    def boom(url, langs): raise RuntimeError("bot-check")
+    monkeypatch.setattr(m, "_fetch_captions", boom)
+    monkeypatch.setattr(m, "_asr", None)
+    r = m.ytdlp_download_transcript("https://youtu.be/t")
+    assert r["source"] == "none" and "bot-check" in r["error"]
