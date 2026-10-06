@@ -137,6 +137,61 @@ def _map_search(info: dict, max_results: int):
     return out
 
 
+# video_url -> original spoken language reported by YouTube (e.g. "en", "zh-TW"),
+# remembered from the caption probe so the whisper fallback can transcribe in
+# the right language instead of assuming Chinese.
+_VIDEO_LANG: dict[str, str] = {}
+
+
+def _primary(lang: str | None) -> str:
+    return (lang or "").split("-")[0].lower()
+
+
+def _track_query(url: str) -> dict:
+    from urllib.parse import parse_qs, urlparse
+    return {k: v[0] for k, v in parse_qs(urlparse(url).query).items() if v}
+
+
+def _caption_candidates(info: dict, langs: list[str]) -> list[tuple[str, dict]]:
+    """Ordered (label, track) list of caption tracks that are VERBATIM speech.
+
+    1. Uploader-provided `subtitles` in `langs` order (human-made).
+    2. Auto-generated ASR tracks in the video's ORIGINAL language only.
+
+    YouTube's `automatic_captions` also lists machine TRANSLATIONS of the ASR
+    into ~150 languages (timedtext URL carries `tlang=`). On auto-dubbed videos
+    there are further ASR tracks of each dubbed audio track (`ar-orig`,
+    `ja-orig`, ...). Regression 2026-10-07: for an English Altcoin Daily video
+    the first "zh-Hant" track was Arabic-dub ASR machine-translated into
+    Chinese — a translation of a translation, quoted in the report as if it
+    were the speaker's words. faithfulness.md forbids exactly that, so
+    translated tracks are never candidates; a wrong-language video falls
+    through to whisper instead.
+    """
+    out = []
+    for lang in langs:
+        for t in (info.get("subtitles") or {}).get(lang) or []:
+            out.append((f"subtitles:{lang}", t))
+
+    orig = _primary(info.get("language"))
+    auto = []
+    for key, tracks in (info.get("automatic_captions") or {}).items():
+        for t in tracks or []:
+            q = _track_query(t.get("url") or "")
+            if q.get("tlang"):
+                continue                                   # machine translation
+            spoken = _primary(q.get("lang") or key.removesuffix("-orig"))
+            if orig and spoken != orig:
+                continue                                   # dubbed-track ASR
+            if not orig and key.removesuffix("-orig") not in langs:
+                continue
+            auto.append((f"auto:{key}", t))
+    # Prefer keys the caller asked for, then the rest (stable within each).
+    rank = {l: i for i, l in enumerate(langs)}
+    auto.sort(key=lambda kt: rank.get(kt[0][5:].removesuffix("-orig"), len(langs)))
+    return out + auto
+
+
 def _looks_like_vtt(text: str) -> bool:
     """A real caption track starts with the WEBVTT header (optionally after a BOM).
 
@@ -178,28 +233,27 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
         }
         with yt_dlp.YoutubeDL(_harden_opts(opts)) as ydl:
             info = ydl.extract_info(video_url, download=False)
-            subs = {**(info.get("subtitles") or {}),
-                    **(info.get("automatic_captions") or {})}
-            for lang in langs:
-                for s in (subs.get(lang) or []):
-                    # Only directly-downloadable VTT. Skip HLS/m3u8 subtitle variants:
-                    # their "url" is an .m3u8 manifest, and a plain GET returns the
-                    # manifest text, not captions (this silently corrupted a source).
-                    proto = s.get("protocol") or ""
-                    url = s.get("url") or ""
-                    if (s.get("ext") != "vtt" or proto.startswith("m3u8")
-                            or "manifest" in url or not url):
-                        continue
-                    try:
-                        with ydl.urlopen(url) as resp:
-                            t = resp.read().decode("utf-8", "replace")
-                    except Exception as e:
-                        rejected.append(f"{lang}: {type(e).__name__}: {e}")
-                        continue
-                    if _looks_like_vtt(t):
-                        return t
-                    rejected.append(f"{lang}: non-VTT response "
-                                    f"({t.strip()[:60]!r} — bot-check page?)")
+            if info.get("language"):
+                _VIDEO_LANG[video_url] = info["language"]
+            for label, s in _caption_candidates(info, langs):
+                # Only directly-downloadable VTT. Skip HLS/m3u8 subtitle variants:
+                # their "url" is an .m3u8 manifest, and a plain GET returns the
+                # manifest text, not captions (this silently corrupted a source).
+                proto = s.get("protocol") or ""
+                url = s.get("url") or ""
+                if (s.get("ext") != "vtt" or proto.startswith("m3u8")
+                        or "manifest" in url or not url):
+                    continue
+                try:
+                    with ydl.urlopen(url) as resp:
+                        t = resp.read().decode("utf-8", "replace")
+                except Exception as e:
+                    rejected.append(f"{label}: {type(e).__name__}: {e}")
+                    continue
+                if _looks_like_vtt(t):
+                    return t
+                rejected.append(f"{label}: non-VTT response "
+                                f"({t.strip()[:60]!r} — bot-check page?)")
     finally:
         # Always clean up the temp directory, removing any written subtitle files
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -233,7 +287,7 @@ def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
     elif _asr is not None:
         # 2) Audio fallback: download audio + transcribe locally via faster-whisper.
         try:
-            t = _asr.transcribe(video_url)
+            t = _asr.transcribe(video_url, language=_VIDEO_LANG.get(video_url))
             if t and t.strip():
                 result = {"source": "whisper", "text": _clean_transcript(t)}
             else:

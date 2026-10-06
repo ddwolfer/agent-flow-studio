@@ -131,8 +131,85 @@ def test_bot_page_end_to_end_falls_back_to_whisper(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: types.SimpleNamespace(
         text=SORRY_PAGE, status_code=429))
     monkeypatch.setattr(m, "_asr", types.SimpleNamespace(
-        transcribe=lambda url: "whisper got the real speech"))
+        transcribe=lambda url, **kw: "whisper got the real speech"))
     r = m.ytdlp_transcript_page("https://youtu.be/bot")
     assert r["source"] == "whisper"
     assert "real speech" in r["text"]
     assert "Sorry" not in r["text"]
+
+
+# ── verbatim-only track selection (2026-10-07) ──────────────────────────────
+def _tt(lang, tlang=None):
+    q = f"v=x&lang={lang}&kind=asr" + (f"&tlang={tlang}" if tlang else "")
+    return {"ext": "vtt", "protocol": "https",
+            "url": f"https://www.youtube.com/api/timedtext?{q}"}
+
+
+DUBBED_EN_VIDEO = {
+    # Shape observed live on an auto-dubbed Altcoin Daily upload: the first
+    # "zh-Hant" track is the ARABIC dub's ASR machine-translated to Chinese.
+    "language": "en",
+    "subtitles": {},
+    "automatic_captions": {
+        "zh-Hant": [_tt("ar", "zh-Hant"), _tt("en", "zh-Hant")],
+        "en": [_tt("pt", "en"), _tt("es", "en")],
+        "ar-orig": [_tt("ar")],
+        "en-orig": [_tt("en")],
+    },
+}
+
+
+def test_machine_translations_and_dub_asr_are_never_candidates():
+    m = _load()
+    cands = m._caption_candidates(DUBBED_EN_VIDEO, ["zh-Hant", "zh-TW", "zh", "en"])
+    assert [label for label, _ in cands] == ["auto:en-orig"]
+    assert "tlang" not in cands[0][1]["url"]
+
+
+def test_original_language_chinese_auto_caption_is_kept():
+    m = _load()
+    info = {"language": "zh-TW", "subtitles": {},
+            "automatic_captions": {"zh-TW": [_tt("zh-TW")],
+                                   "en": [_tt("zh-TW", "en")]}}
+    assert [l for l, _ in m._caption_candidates(info, ["zh-Hant", "zh-TW", "en"])] \
+        == ["auto:zh-TW"]
+
+
+def test_uploader_subtitles_come_first():
+    m = _load()
+    info = dict(DUBBED_EN_VIDEO, subtitles={"en": [
+        {"ext": "vtt", "protocol": "https", "url": "https://human/en.vtt"}]})
+    labels = [l for l, _ in m._caption_candidates(info, ["zh-Hant", "en"])]
+    assert labels == ["subtitles:en", "auto:en-orig"]
+
+
+def test_unknown_language_falls_back_to_requested_untranslated_keys():
+    m = _load()
+    info = {"subtitles": {}, "automatic_captions": {
+        "en": [_tt("en")], "ja-orig": [_tt("ja")], "zh-Hant": [_tt("en", "zh-Hant")]}}
+    assert [l for l, _ in m._caption_candidates(info, ["zh-Hant", "en"])] == ["auto:en"]
+
+
+def test_only_translations_available_returns_none_so_whisper_runs(monkeypatch):
+    m = _load(); m._MIN_GAP = 0
+    info = {"language": "en", "subtitles": {},
+            "automatic_captions": {"zh-Hant": [_tt("en", "zh-Hant")]}}
+    seen = []
+    monkeypatch.setattr(m.yt_dlp, "YoutubeDL", _fake_ydl(info, {}, seen))
+    assert m._fetch_captions("https://youtu.be/tr", ["zh-Hant", "en"]) is None
+    assert seen == []                                # never fetched a translation
+    assert m._VIDEO_LANG["https://youtu.be/tr"] == "en"   # hint kept for whisper
+
+
+def test_whisper_receives_spoken_language_hint(monkeypatch):
+    m = _load(); m._MIN_GAP = 0
+    m._TRANSCRIPT_CACHE.clear()
+    info = {"language": "en", "subtitles": {}, "automatic_captions": {}}
+    monkeypatch.setattr(m.yt_dlp, "YoutubeDL", _fake_ydl(info))
+    got = {}
+    def fake_transcribe(url, language=None):
+        got["language"] = language
+        return "spoken english"
+    monkeypatch.setattr(m, "_asr", types.SimpleNamespace(transcribe=fake_transcribe))
+    r = m.ytdlp_transcript_page("https://youtu.be/en-nocaps")
+    assert r["source"] == "whisper" and got["language"] == "en"

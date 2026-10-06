@@ -21,7 +21,7 @@ def test_captions_exception_falls_through_to_whisper(monkeypatch):
     monkeypatch.setattr(m, "_fetch_captions", boom)
     # whisper available and returns text
     monkeypatch.setattr(m, "_asr", types.SimpleNamespace(
-        transcribe=lambda url: "各位朋友大家好 這裡是測試逐字稿"))
+        transcribe=lambda url, **kw: "各位朋友大家好 這裡是測試逐字稿"))
     r = m._get_full_transcript("https://youtu.be/x")
     assert r["source"] == "whisper"
     assert "測試逐字稿" in r["text"]
@@ -32,7 +32,7 @@ def test_no_captions_uses_whisper(monkeypatch):
     m._TRANSCRIPT_CACHE.clear()
     monkeypatch.setattr(m, "_fetch_captions", lambda url, langs: None)  # no captions
     monkeypatch.setattr(m, "_asr", types.SimpleNamespace(
-        transcribe=lambda url: "audio transcription text"))
+        transcribe=lambda url, **kw: "audio transcription text"))
     r = m._get_full_transcript("https://youtu.be/y")
     assert r["source"] == "whisper"
     assert "audio transcription" in r["text"]
@@ -45,7 +45,7 @@ def test_captions_win_when_present(monkeypatch):
                         lambda url, langs: "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n有字幕\n")
     # whisper should NOT be called when captions exist
     called = {"n": 0}
-    def g(url): called["n"] += 1; return "should not run"
+    def g(url, **kw): called["n"] += 1; return "should not run"
     monkeypatch.setattr(m, "_asr", types.SimpleNamespace(transcribe=g))
     r = m._get_full_transcript("https://youtu.be/z")
     assert r["source"] == "captions"
@@ -58,7 +58,7 @@ def test_both_fail_reports_both_errors(monkeypatch):
     m._TRANSCRIPT_CACHE.clear()
     def boom(url, langs): raise RuntimeError("429 rate limit")
     monkeypatch.setattr(m, "_fetch_captions", boom)
-    def gboom(url): raise RuntimeError("model load failed")
+    def gboom(url, **kw): raise RuntimeError("model load failed")
     monkeypatch.setattr(m, "_asr", types.SimpleNamespace(transcribe=gboom))
     r = m._get_full_transcript("https://youtu.be/w")
     assert r["source"] == "none"
@@ -85,7 +85,7 @@ def test_download_transcript_tool_shares_fallback_cascade(monkeypatch):
     def boom(url, langs): raise RuntimeError("caption tracks found but none usable")
     monkeypatch.setattr(m, "_fetch_captions", boom)
     monkeypatch.setattr(m, "_asr", types.SimpleNamespace(
-        transcribe=lambda url: "audio says hello"))
+        transcribe=lambda url, **kw: "audio says hello"))
     r = m.ytdlp_download_transcript("https://youtu.be/u")
     assert r["source"] == "whisper"
     assert "audio says hello" in r["text"]

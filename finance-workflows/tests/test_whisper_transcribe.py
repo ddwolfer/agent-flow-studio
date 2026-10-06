@@ -19,10 +19,10 @@ def _stub_download(m, monkeypatch):
 def test_prefers_groq_when_key_set(monkeypatch):
     m = _load(); _stub_download(m, monkeypatch)
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
-    monkeypatch.setattr(m, "_groq_transcribe", lambda wav, dp, key: "groq text")
+    monkeypatch.setattr(m, "_groq_transcribe", lambda wav, dp, key, language=None: "groq text")
     called = {"local": 0}
     monkeypatch.setattr(m, "_local_transcribe",
-                        lambda wav: called.__setitem__("local", called["local"] + 1) or "local text")
+                        lambda wav, language=None: called.__setitem__("local", called["local"] + 1) or "local text")
     assert m.transcribe("https://youtu.be/x") == "groq text"
     assert called["local"] == 0  # local must NOT run when groq succeeds
 
@@ -30,17 +30,17 @@ def test_prefers_groq_when_key_set(monkeypatch):
 def test_falls_back_to_local_on_groq_error(monkeypatch):
     m = _load(); _stub_download(m, monkeypatch)
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
-    def boom(wav, dp, key): raise RuntimeError("groq 500")
+    def boom(wav, dp, key, language=None): raise RuntimeError("groq 500")
     monkeypatch.setattr(m, "_groq_transcribe", boom)
-    monkeypatch.setattr(m, "_local_transcribe", lambda wav: "local text")
+    monkeypatch.setattr(m, "_local_transcribe", lambda wav, language=None: "local text")
     assert m.transcribe("https://youtu.be/x") == "local text"
 
 
 def test_groq_empty_falls_back_to_local(monkeypatch):
     m = _load(); _stub_download(m, monkeypatch)
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
-    monkeypatch.setattr(m, "_groq_transcribe", lambda wav, dp, key: "   ")
-    monkeypatch.setattr(m, "_local_transcribe", lambda wav: "local text")
+    monkeypatch.setattr(m, "_groq_transcribe", lambda wav, dp, key, language=None: "   ")
+    monkeypatch.setattr(m, "_local_transcribe", lambda wav, language=None: "local text")
     assert m.transcribe("https://youtu.be/x") == "local text"
 
 
@@ -49,7 +49,7 @@ def test_no_key_uses_local(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     called = {"groq": 0}
     monkeypatch.setattr(m, "_groq_transcribe",
-                        lambda wav, dp, key: called.__setitem__("groq", 1) or "groq")
-    monkeypatch.setattr(m, "_local_transcribe", lambda wav: "local text")
+                        lambda wav, dp, key, language=None: called.__setitem__("groq", 1) or "groq")
+    monkeypatch.setattr(m, "_local_transcribe", lambda wav, language=None: "local text")
     assert m.transcribe("https://youtu.be/x") == "local text"
     assert called["groq"] == 0  # groq must NOT run without a key

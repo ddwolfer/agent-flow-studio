@@ -44,3 +44,11 @@ def test_download_is_bounded_by_timeout(monkeypatch, tmp_path):
     monkeypatch.setattr(m.subprocess, "run", fake_run)
     with pytest.raises(RuntimeError, match="timed out"):
         m._download_wav("https://youtu.be/x", tmp_path)
+
+
+def test_language_and_prompt_selection():
+    m = _load()
+    assert m._lang_and_prompt(None) == ("zh", m.INITIAL_PROMPT)       # historical default
+    assert m._lang_and_prompt("zh-TW") == ("zh", m.INITIAL_PROMPT)
+    assert m._lang_and_prompt("en") == ("en", m.INITIAL_PROMPT_EN)
+    assert m._lang_and_prompt("en-US")[0] == "en"

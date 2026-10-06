@@ -39,6 +39,25 @@ INITIAL_PROMPT = os.environ.get(
     "阻力、成本線、籌碼、巨鯨、減半、ETF、聯準會、升息、降息、那斯達克、台股、"
     "加權指數、台積電、輝達。",
 )
+# Same vocabulary bias for English-language channels. A Chinese prompt on
+# English audio pushes Whisper toward translating, which breaks verbatim quotes.
+INITIAL_PROMPT_EN = os.environ.get(
+    "STUDIO_WHISPER_PROMPT_EN",
+    "Crypto and macro market commentary. Terms: Bitcoin, BTC, Ethereum, ETH, "
+    "altcoins, Solana, XRP, stablecoin, ETF, Fed, FOMC, CPI, PPI, yields, "
+    "liquidation, funding rate, open interest, bull market, bear market.",
+)
+
+
+def _lang_and_prompt(language):
+    """Whisper language code + matching vocabulary prompt.
+
+    `language` is YouTube's reported spoken language ("en", "zh-TW", ...) or
+    None. Unknown stays "zh" — the historical default, and the channels that
+    reach the audio path are mostly Chinese (BTV, TiaBTC: no captions at all).
+    """
+    lang = (language or "zh").split("-")[0].lower()
+    return lang, (INITIAL_PROMPT if lang == "zh" else INITIAL_PROMPT_EN)
 
 _model = None
 
@@ -103,9 +122,11 @@ def _audio_duration(path: pathlib.Path) -> int:
     return int(float(r.stdout.strip() or "0"))
 
 
-def _groq_transcribe(wav: pathlib.Path, dp: pathlib.Path, key: str) -> str:
+def _groq_transcribe(wav: pathlib.Path, dp: pathlib.Path, key: str,
+                     language=None) -> str:
     """Transcribe via Groq, chunking long audio to stay under the 25MB limit."""
     import httpx
+    lang, prompt = _lang_and_prompt(language)
     dur = _audio_duration(wav)
     starts = list(range(0, max(dur, 1), GROQ_CHUNK_SEC)) or [0]
     parts = []
@@ -118,8 +139,8 @@ def _groq_transcribe(wav: pathlib.Path, dp: pathlib.Path, key: str) -> str:
         with open(chunk, "rb") as f:
             r = httpx.post(GROQ_URL, headers={"Authorization": f"Bearer {key}"},
                            files={"file": (chunk.name, f, "audio/wav")},
-                           data={"model": GROQ_MODEL, "language": "zh",
-                                 "prompt": INITIAL_PROMPT, "temperature": "0"},
+                           data={"model": GROQ_MODEL, "language": lang,
+                                 "prompt": prompt, "temperature": "0"},
                            timeout=180.0)
         r.raise_for_status()
         t = (r.json().get("text") or "").strip()
@@ -128,13 +149,14 @@ def _groq_transcribe(wav: pathlib.Path, dp: pathlib.Path, key: str) -> str:
     return "\n".join(parts)
 
 
-def _local_transcribe(wav: pathlib.Path) -> str:
+def _local_transcribe(wav: pathlib.Path, language=None) -> str:
+    lang, prompt = _lang_and_prompt(language)
     segments, _info = _get_model().transcribe(
-        str(wav), vad_filter=True, initial_prompt=INITIAL_PROMPT)
+        str(wav), vad_filter=True, language=lang, initial_prompt=prompt)
     return "\n".join(s.text.strip() for s in segments if s.text.strip())
 
 
-def transcribe(video_url: str) -> str:
+def transcribe(video_url: str, language=None) -> str:
     """Download the video's audio and return its full transcript text.
 
     Prefers Groq (fast, cloud); falls back to local faster-whisper if there is
@@ -146,9 +168,9 @@ def transcribe(video_url: str) -> str:
         key = os.environ.get("GROQ_API_KEY")
         if key:
             try:
-                text = _groq_transcribe(wav, dp, key)
+                text = _groq_transcribe(wav, dp, key, language)
                 if text.strip():
                     return text
             except Exception:
                 pass  # fall through to local offline transcription
-        return _local_transcribe(wav)
+        return _local_transcribe(wav, language)
