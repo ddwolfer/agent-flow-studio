@@ -26,18 +26,21 @@ def _load():
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
 
 
-def _fake_ydl(info, bodies=None, seen=None):
+def _fake_ydl(info, bodies=None, seen=None, requests_seen=None):
     """FakeYDL whose urlopen serves `bodies[url]` (str or Exception)."""
     bodies = bodies or {}
     seen = seen if seen is not None else []
+    requests_seen = requests_seen if requests_seen is not None else []
 
     class FakeYDL:
         def __init__(self, *a, **k): pass
         def __enter__(self): return self
         def __exit__(self, *a): return False
         def extract_info(self, url, download=False): return info
-        def urlopen(self, url):
+        def urlopen(self, req):
+            url = getattr(req, "url", req)       # yt-dlp Request or plain str
             seen.append(url)
+            requests_seen.append(req)
             body = bodies[url]
             if isinstance(body, Exception):
                 raise body

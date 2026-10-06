@@ -12,7 +12,8 @@ def _load():
 
 class _FakeYDL:
     """Mimics yt_dlp.YoutubeDL: context manager exposing extract_info()."""
-    def __init__(self, *args, **kwargs): pass
+    def __init__(self, opts=None, *args, **kwargs):
+        _FakeYDL.last_opts = opts or {}
     def __enter__(self): return self
     def __exit__(self, *a): return False
     extract_info_return = None  # set by tests
@@ -36,7 +37,8 @@ def test_latest_from_channel_hits_videos_url_and_maps_entries(monkeypatch):
     assert _FakeYDL.last_url == "https://www.youtube.com/@crypto_punks/videos"
     assert len(out) == 2
     assert out[0] == {"video_id": "AAA", "title": "Today's video",
-                      "upload_date": "2026-05-21", "url": "https://youtu.be/AAA"}
+                      "upload_date": "2026-05-21", "url": "https://youtu.be/AAA",
+                      "availability": None, "live_status": None}
 
 
 def test_channel_id_builds_channel_url(monkeypatch):

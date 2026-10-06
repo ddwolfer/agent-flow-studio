@@ -1,5 +1,9 @@
 mcp[cli]>=1.0
-yt-dlp>=2024.9.0
+# YouTube breaks old yt-dlp clients every few months (2026.03.17 → HTTP 403 on
+# all audio by 2026-10). [default] bundles the EJS challenge solver
+# (yt-dlp-ejs); [curl-cffi] enables browser impersonation for caption fetches.
+# scripts/update_ytdlp.py upgrades it before every crypto-daily run.
+yt-dlp[default,curl-cffi]>=2026.8.19
 requests>=2.31
 feedparser>=6.0
 httpx>=0.27
@@ -10,7 +14,7 @@ markdownify>=0.13
 yfinance>=1.3,<2
 # curl_cffi 0.x is pre-1.0 — minor versions can be breaking. Allow 0.15+ but
 # block jumps past 0.x major to keep yfinance compat predictable.
-curl_cffi>=0.15,<1
+curl_cffi>=0.15,<0.17   # yt-dlp's impersonation handler rejects >=0.17
 # Local ASR for caption-less YouTube audio (replaces the ollama/gemma path,
 # which silently ignored audio on the OpenAI-compat endpoint — see commit
 # swapping gemma_transcribe → whisper_transcribe). CPU int8, auto language.

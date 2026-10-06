@@ -126,16 +126,43 @@ def _bound_transcript(text: str, max_chars: int = _MAX_CHARS) -> dict:
     return {"text": bounded, "full_chars": full_chars, "truncated": True}
 
 
-def _map_search(info: dict, max_results: int):
+def _map_entries(info: dict) -> list[dict]:
     out = []
-    for e in (info.get("entries") or [])[:max_results]:
+    for e in (info.get("entries") or []):
         d = e.get("upload_date") or ""
         iso = f"{d[0:4]}-{d[4:6]}-{d[6:8]}" if len(d) == 8 else d
         out.append({"video_id": e.get("id"), "title": e.get("title"),
                     "upload_date": iso,
-                    "url": e.get("webpage_url") or f"https://youtu.be/{e.get('id')}"})
+                    "url": e.get("webpage_url") or f"https://youtu.be/{e.get('id')}",
+                    # None = public on the newer lockup listing path; never treat
+                    # None as restricted.
+                    "availability": e.get("availability"),
+                    "live_status": e.get("live_status")})
     return out
 
+
+def _map_search(info: dict, max_results: int):
+    return _map_entries(info)[:max_results]
+
+
+# Uploads no anonymous route can read: captions, audio and every third-party
+# transcript service all fail on these, so trying them only burns YouTube
+# requests. Coin Bureau publishes "Coin Bureau Club" members-only videos into
+# the same /videos tab — on 2026-10-07, 4 of its newest 8 were subscriber_only.
+_UNREADABLE_AVAILABILITY = frozenset({"subscriber_only", "premium_only",
+                                      "needs_auth", "private"})
+_UNREADABLE_LIVE = frozenset({"is_upcoming", "is_live"})
+
+
+def _is_readable(entry: dict) -> bool:
+    return (entry.get("availability") not in _UNREADABLE_AVAILABILITY
+            and entry.get("live_status") not in _UNREADABLE_LIVE)
+
+
+# video_url -> creator-written metadata (title/description/chapters) from the
+# caption probe — the last-resort "description" source when no speech is
+# obtainable. Costs no extra YouTube request.
+_VIDEO_META: dict[str, dict] = {}
 
 # video_url -> original spoken language reported by YouTube (e.g. "en", "zh-TW"),
 # remembered from the caption probe so the whisper fallback can transcribe in
@@ -192,6 +219,56 @@ def _caption_candidates(info: dict, langs: list[str]) -> list[tuple[str, dict]]:
     return out + auto
 
 
+def _open_caption(ydl, track: dict) -> str:
+    """GET one caption track through the YoutubeDL session.
+
+    yt-dlp marks every YouTube subtitle entry `impersonate: True`; its own
+    subtitle downloader then sends a curl_cffi browser TLS fingerprint plus the
+    entry's http_headers. Mirror that here so the request looks like the one
+    yt-dlp itself would make. If no impersonation handler is installed
+    (curl_cffi missing / out of yt-dlp's supported range) fall back to a plain
+    session request instead of failing the track.
+    """
+    from yt_dlp.networking import Request
+    from yt_dlp.networking.exceptions import NoSupportingHandlers
+    headers = track.get("http_headers") or {}
+    if track.get("impersonate"):
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        req = Request(track["url"], headers=headers,
+                      extensions={"impersonate": ImpersonateTarget()})
+        try:
+            with ydl.urlopen(req) as resp:
+                return resp.read().decode("utf-8", "replace")
+        except NoSupportingHandlers:
+            pass
+    with ydl.urlopen(Request(track["url"], headers=headers)) as resp:
+        return resp.read().decode("utf-8", "replace")
+
+
+def _description_source(meta: dict) -> str:
+    """Creator-written text for a video with no obtainable speech.
+
+    Title + chapter list + description with URLs removed (descriptions are
+    mostly affiliate/sponsor links). This is NOT what was said in the video —
+    the "description" source label carries that to the report layer."""
+    parts = [f"標題:{meta.get('title') or ''}"]
+    chapters = meta.get("chapters") or []
+    if chapters:
+        parts.append("章節:")
+        for c in chapters:
+            sec = int(c.get("start_time") or 0)
+            parts.append(f"  {sec // 60:02d}:{sec % 60:02d} {c.get('title') or ''}")
+    desc_lines = []
+    for line in (meta.get("description") or "").splitlines():
+        line = re.sub(r"https?://\S+", "", line).strip()
+        if line and not re.fullmatch(r"[\W_]+", line):
+            desc_lines.append(line)
+    if desc_lines:
+        parts.append("說明欄:")
+        parts.extend(desc_lines)
+    return "\n".join(parts)[:6000]
+
+
 def _looks_like_vtt(text: str) -> bool:
     """A real caption track starts with the WEBVTT header (optionally after a BOM).
 
@@ -227,6 +304,8 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
             "writeautomaticsub": True,
             "subtitleslangs": langs,
             "quiet": True,
+            # Unplayable videos (premieres, format-less) still yield metadata.
+            "ignore_no_formats_error": True,
             # Redirect any file writes into the tmpdir (then we delete it)
             "paths": {"home": tmpdir},
             "outtmpl": {"default": "%(id)s.%(ext)s", "subtitle": "%(id)s.%(ext)s"},
@@ -235,6 +314,8 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
             info = ydl.extract_info(video_url, download=False)
             if info.get("language"):
                 _VIDEO_LANG[video_url] = info["language"]
+            _VIDEO_META[video_url] = {k: info.get(k) for k in
+                                      ("title", "description", "chapters")}
             for label, s in _caption_candidates(info, langs):
                 # Only directly-downloadable VTT. Skip HLS/m3u8 subtitle variants:
                 # their "url" is an .m3u8 manifest, and a plain GET returns the
@@ -245,8 +326,7 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
                         or "manifest" in url or not url):
                     continue
                 try:
-                    with ydl.urlopen(url) as resp:
-                        t = resp.read().decode("utf-8", "replace")
+                    t = _open_caption(ydl, s)
                 except Exception as e:
                     rejected.append(f"{label}: {type(e).__name__}: {e}")
                     continue
@@ -266,7 +346,9 @@ def _fetch_captions(video_url: str, langs: list[str]) -> str | None:
 def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
     """Fetch + clean the FULL transcript once per video_url (cached). No truncation.
 
-    Returns {"source": "captions"|"whisper"|"none", "text": str}.
+    Returns {"source": "captions"|"whisper"|"description"|"none", "text": str}.
+    "description" = no speech obtainable; text is the creator's title/chapters/
+    description (NOT a transcript) and `error` still says why speech failed.
     """
     cached = _TRANSCRIPT_CACHE.get(video_url)
     if cached is not None:
@@ -294,7 +376,11 @@ def _get_full_transcript(video_url: str, language: str = "zh-Hant") -> dict:
                 errors.append("whisper: empty transcript")
         except Exception as e:
             errors.append(f"whisper: {e}")
-    if result["source"] == "none" and errors:
+    if result["source"] == "none":
+        meta = _VIDEO_META.get(video_url) or {}
+        if (meta.get("description") or "").strip() or meta.get("chapters"):
+            result = {"source": "description", "text": _description_source(meta)}
+    if result["source"] in ("none", "description") and errors:
         result["error"] = "transcript failed: " + "; ".join(errors)
     # Cache key is video_url only; assumes a consistent language per URL within a session.
     _TRANSCRIPT_CACHE[video_url] = result
@@ -325,7 +411,12 @@ def ytdlp_latest_from_channel(handle: str, max_results: int = 5):
     `ytdlp_search_videos` for a specific channel's recent uploads (keyword search can
     return unrelated channels when the handle name isn't unique).
 
-    Returns [{video_id, title, upload_date, url}] newest-first. Never raises → [] on failure.
+    Returns [{video_id, title, upload_date, url, availability, live_status}]
+    newest-first. Members-only / upcoming / live entries are skipped so the
+    caller gets the newest video that can actually be transcribed; if EVERY
+    recent entry is unreadable they are returned as-is (availability tells the
+    caller why) rather than an empty list that would read as "no uploads".
+    Never raises → [] on failure.
     """
     h = (handle or "").strip().lstrip("@")
     if not h:
@@ -336,13 +427,17 @@ def ytdlp_latest_from_channel(handle: str, max_results: int = 5):
         url = f"https://www.youtube.com/@{h}/videos"
     try:
         _throttle()
-        opts = {"quiet": True, "extract_flat": True,
-                "playlistend": max(int(max_results), 1)}
+        n = max(int(max_results), 1)
+        # Over-fetch so skipping members-only uploads still leaves n entries;
+        # still one listing request.
+        opts = {"quiet": True, "extract_flat": True, "playlistend": n + 8}
         with yt_dlp.YoutubeDL(_harden_opts(opts)) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception:
         return []
-    return _map_search(info, max_results)
+    entries = _map_entries(info)
+    readable = [e for e in entries if _is_readable(e)]
+    return (readable or entries)[:n]
 
 @mcp.tool()
 def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
@@ -350,7 +445,8 @@ def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
     Return the cleaned, bounded transcript text inline.
 
     Result shape: {source, text, full_chars, truncated}
-    - source: "captions" | "whisper" | "none"
+    - source: "captions" | "whisper" | "description" | "none"
+      ("description" = creator's title/chapters/description, NOT speech)
     - text: cleaned plain text (VTT markup stripped, consecutive dups removed);
             if truncated=True, contains head + "[...middle elided N chars...]" + tail
     - full_chars: character count of the fully cleaned text (before any elision)
@@ -372,7 +468,10 @@ def ytdlp_download_transcript(video_url: str, language: str = "zh-Hant"):
         if "error" in info:
             out["error"] = info["error"]
         return out
-    return {"source": info["source"], **_bound_transcript(info["text"])}
+    out = {"source": info["source"], **_bound_transcript(info["text"])}
+    if "error" in info:
+        out["error"] = info["error"]          # "description": why speech failed
+    return out
 
 @mcp.tool()
 def ytdlp_transcript_page(video_url: str, page: int = 0,
@@ -385,7 +484,9 @@ def ytdlp_transcript_page(video_url: str, page: int = 0,
     tool result. Page through 0..total_pages-1 to read the entire transcript.
 
     Result: {source, page, total_pages, full_chars, text}
-      - source: "captions" | "whisper" | "none"
+      - source: "captions" | "whisper" | "description" | "none"
+        ("description" = no speech obtainable; text is the creator's title/
+        chapters/description — NOT a transcript, never quote it as speech)
       - total_pages: number of pages of size page_size (0 if no transcript)
       - full_chars: length of the full cleaned transcript
       - text: the requested page slice ("" if page is out of range)

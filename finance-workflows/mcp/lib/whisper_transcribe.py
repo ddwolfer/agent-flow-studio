@@ -77,7 +77,7 @@ def _download_wav(video_url: str, dp: pathlib.Path) -> pathlib.Path:
     Regression 2026-10-07: PATH resolved to a separate Homebrew copy frozen at
     2026.03.17, which YouTube answered with HTTP 403 on every audio download,
     while the reports only said "exit status 1". One interpreter = one yt-dlp
-    version to keep current (scripts/update_ytdlp.sh), and stderr is surfaced.
+    version to keep current (scripts/update_ytdlp.py), and stderr is surfaced.
     """
     cmd = [
         sys.executable, "-m", "yt_dlp",

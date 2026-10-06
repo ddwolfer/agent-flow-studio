@@ -26,6 +26,12 @@ EXTRAS_DIR="$FW_ROOT/reports/crypto-daily/_extras"
 mkdir -p "$EXTRAS_DIR"
 EXTRAS_PATH="$EXTRAS_DIR/$DATE.json"
 
+echo "[crypto-daily] step 0: keep yt-dlp current (YouTube breaks stale installs)"
+# Non-fatal: offline/PyPI trouble keeps the installed version; a broken
+# upgrade is rolled back inside the script. See scripts/update_ytdlp.py.
+"$PY" "$FW_ROOT/scripts/update_ytdlp.py" \
+    || echo "[crypto-daily] WARN: yt-dlp update step failed (non-fatal)" >&2
+
 echo "[crypto-daily] step 1: pre-fetch BTC cycle data → $EXTRAS_PATH"
 # fetch_btc_cycle is fail-isolated per source (each block gets its own "error"
 # key), so a single dead API degrades one section instead of killing the run.
