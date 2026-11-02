@@ -21,11 +21,15 @@ TELEGRAM_API = "https://api.telegram.org"
 
 
 def _latest_history(history_path: pathlib.Path, date: str):
-    """Return the latest history.jsonl entry, preferring one matching `date`."""
+    """Return the latest history.jsonl entry for `date`, or None.
+
+    Never falls back to another day's entry: when today's summary step failed
+    (e.g. the 2026-11-02 usage-limit hit), the old "else latest entry" fallback
+    would have pushed YESTERDAY's stance/signals under TODAY's header. No
+    summary ("報告已產出,無摘要資料") is honest; a stale one is not."""
     if not history_path.exists():
         return None
     matched = None
-    last_any = None
     for line in history_path.read_text("utf-8").splitlines():
         line = line.strip()
         if not line:
@@ -34,10 +38,9 @@ def _latest_history(history_path: pathlib.Path, date: str):
             obj = json.loads(line)
         except Exception:
             continue
-        last_any = obj
         if obj.get("date") == date:
             matched = obj
-    return matched or last_any
+    return matched
 
 
 def _list_item(x):

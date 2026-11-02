@@ -1,4 +1,4 @@
-import importlib.util, json, os, pathlib, subprocess, sys, textwrap
+import importlib.util, json, os, pathlib, subprocess, sys, textwrap, time
 
 REPO = pathlib.Path(__file__).parents[2]  # /…/new_financial-report-system
 FW = REPO / "finance-workflows"
@@ -155,3 +155,113 @@ def test_orchestrator_writes_report_with_fake_claude(tmp_path):
     mcp_json = tmp_path / "mcp" / "mcp.json"
     assert mcp_json.exists()
     assert set(json.loads(mcp_json.read_text("utf-8"))["mcpServers"].keys()) == {"rss"}
+
+
+# ── usage limit + salvage + --post-only (2026-11-02) ──────────────────────────
+LIMIT_MSG = "You've hit your 5-hour limit · resets 8:30am (Asia/Taipei)"
+
+
+def test_usage_limit_is_detected_but_not_transient():
+    m = _load_runner()
+    assert m._usage_limit_reset(f"blah\n{LIMIT_MSG}\n") == "8:30am (Asia/Taipei)"
+    assert m._usage_limit_reset("You've hit your usage limit") == ""
+    assert m._usage_limit_reset("API Error: socket connection was closed") is None
+    assert not m._is_transient(LIMIT_MSG)       # 30/90s retry can't outlast it
+
+
+def test_fresh_complete_html(tmp_path):
+    m = _load_runner()
+    p = tmp_path / "r.html"
+    p.write_text("<html><body>x</body></html>\n", "utf-8")
+    since = time.time()
+    os.utime(p, (since - 3600, since - 3600))
+    assert not m._fresh_complete_html(p, since)             # stale: earlier run
+    os.utime(p, None)
+    assert m._fresh_complete_html(p, since)
+    p.write_text("<html><body>half-writ", "utf-8")
+    assert not m._fresh_complete_html(p, since)             # unfinished
+    assert not m._fresh_complete_html(tmp_path / "missing.html", since)
+
+
+def _fake_root(tmp_path, claude_body):
+    workflows = tmp_path / "workflows"; workflows.mkdir()
+    prompts = tmp_path / "prompts" / "x"; prompts.mkdir(parents=True)
+    (prompts / "main.md").write_text("write to ${OUTPUT_PATH} please\n", "utf-8")
+    mcp_dir = tmp_path / "mcp"; (mcp_dir / "servers").mkdir(parents=True)
+    (mcp_dir / "mcp.json.tmpl").write_text(json.dumps({"mcpServers": {
+        "rss": {"command": "@PY@", "args": ["@MCPDIR@/servers/rss_server.py"]}}}), "utf-8")
+    (workflows / "demo.json").write_text(json.dumps({
+        "name": "demo", "model": "claude-sonnet-4-6", "max_turns": 5,
+        "sources": [{"kind": "rss", "name": "z", "url": "https://example.com"}],
+        "tools": ["rss"], "prompts": ["prompts/x/main.md"],
+        "output": "reports/demo/{date}.html", "post": {"pdf": False},
+    }), "utf-8")
+    fake = tmp_path / "fake-claude.sh"
+    fake.write_text("#!/usr/bin/env bash\n" + textwrap.dedent(claude_body), "utf-8")
+    fake.chmod(0o755)
+    env = os.environ.copy()
+    env.update(FINANCE_WORKFLOWS_ROOT=str(tmp_path),
+               FINANCE_WORKFLOWS_CLAUDE_BIN=str(fake),
+               FINANCE_WORKFLOWS_PYTHON_BIN=sys.executable,
+               FINANCE_WORKFLOWS_DATE="2026-11-02")
+    for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        env.pop(k, None)
+    return env, tmp_path / "reports" / "demo" / "2026-11-02.html"
+
+
+_WRITE_THEN = """\
+    PROMPT=""
+    while [[ $# -gt 0 ]]; do
+      if [[ "$1" == "-p" ]]; then PROMPT="$2"; shift 2; else shift; fi
+    done
+    OUT=$(printf "%s" "$PROMPT" | grep -oE 'write to [^ ]+' | awk '{print $3}')
+    mkdir -p "$(dirname "$OUT")"
+    printf '<html><body>full report</body></html>' > "$OUT"
+    echo "You've hit your 5-hour limit · resets 8:30am (Asia/Taipei)"
+    exit 1
+"""
+
+
+def _run(env, *extra):
+    return subprocess.run([sys.executable, str(FW / "run-workflow.py"), "demo", *extra],
+                          env=env, capture_output=True, text=True)
+
+
+def test_report_written_before_usage_limit_is_salvaged(tmp_path):
+    env, html = _fake_root(tmp_path, _WRITE_THEN)
+    r = _run(env)
+    assert r.returncode == 0, r.stderr                     # post-processing ran
+    assert "full report" in html.read_text("utf-8")
+    assert "訂閱額度用完" in r.stderr and "照常產 PDF" in r.stderr
+    assert "[run] ok" in r.stderr
+
+
+def test_usage_limit_without_report_still_fails(tmp_path):
+    env, html = _fake_root(tmp_path, f'echo "{LIMIT_MSG}"\nexit 1\n')
+    r = _run(env)
+    assert r.returncode == 1 and not html.exists()
+    assert "需要補跑" in r.stderr
+
+
+def test_stale_report_from_earlier_run_is_not_salvaged(tmp_path):
+    env, html = _fake_root(tmp_path, f'echo "{LIMIT_MSG}"\nexit 1\n')
+    html.parent.mkdir(parents=True)
+    html.write_text("<html>yesterday's run</html>", "utf-8")
+    os.utime(html, (time.time() - 7200,) * 2)
+    assert _run(env).returncode == 1
+
+
+def test_post_only_never_invokes_claude(tmp_path):
+    marker = tmp_path / "claude-was-called"
+    env, html = _fake_root(tmp_path, f'touch "{marker}"\nexit 99\n')
+    html.parent.mkdir(parents=True)
+    html.write_text("<html>done earlier</html>", "utf-8")
+    r = _run(env, "--post-only")
+    assert r.returncode == 0, r.stderr
+    assert not marker.exists()
+    assert "post-only ok" in r.stderr
+
+
+def test_post_only_without_html_returns_4(tmp_path):
+    env, _ = _fake_root(tmp_path, "exit 99\n")
+    assert _run(env, "--post-only").returncode == 4

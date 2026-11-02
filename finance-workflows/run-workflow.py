@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """finance-workflows orchestrator. Usage: python3 run-workflow.py <name>"""
-import argparse, datetime as _dt, json, os, pathlib, signal, subprocess, sys, time
+import argparse, datetime as _dt, json, os, pathlib, re, signal, subprocess, sys, time
 import urllib.request, urllib.parse
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -147,6 +147,31 @@ def _is_transient(log_tail: str) -> bool:
     return any(p in log_tail for p in _TRANSIENT_PATTERNS)
 
 
+# Subscription usage limit (real hit 2026-11-02 07:35: "You've hit your 5-hour
+# limit · resets 8:30am (Asia/Taipei)"). NOT transient: a 30/90s retry can't
+# outlast an hours-long window, so it only shapes the alert text.
+_USAGE_LIMIT_RE = re.compile(r"hit your [^\n]*?limit(?:\s*·\s*resets\s+([^\n]+))?", re.I)
+
+
+def _usage_limit_reset(log_tail: str):
+    """None if no usage-limit message; else the reset text ('' if none given)."""
+    m = _USAGE_LIMIT_RE.search(log_tail or "")
+    return None if m is None else (m.group(1) or "").strip()
+
+
+def _fresh_complete_html(path, since):
+    """True if THIS run wrote a finished HTML (mtime >= start, ends in </html>).
+
+    Claude writes the report with one Write call; on 2026-11-02 it hit the usage
+    limit only AFTER writing a complete report, and rc=1 threw the whole report
+    away (no PDF, no Telegram). A stale file from an earlier run never counts."""
+    try:
+        return (path.stat().st_mtime >= since - 1
+                and "</html>" in path.read_text("utf-8", errors="replace")[-2000:].lower())
+    except OSError:
+        return False
+
+
 def _run_claude_once(argv_, log_path, root, timeout=3600):
     """Run claude once; reap orphan MCP children on exit. Returns (rc, log_tail)."""
     with log_path.open("a", encoding="utf-8") as logf:
@@ -201,10 +226,11 @@ def _run_claude_with_retry(argv_, log_path, root, *, attempts=3, backoff=30,
     return rc
 
 
-def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path):
+def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path, note=""):
     """Best-effort: post a failure alert to the same Telegram topic that would
     have received the success message. Silent on any error — alerting must
-    never make the runner crash worse than it already has."""
+    never make the runner crash worse than it already has. `note` is an extra
+    human line (usage-limit reset time, or "report salvaged")."""
     try:
         bot = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
         chat = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
@@ -220,6 +246,7 @@ def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path):
         except Exception:
             pass
         text = (f"⚠️ *{workflow_name}* `{date}` 跑失敗 (rc={rc})\n"
+                + (f"{note}\n" if note else "") +
                 f"Log: `{log_path.name}`\n"
                 f"```\n{tail}\n```")
         data = urllib.parse.urlencode({
@@ -234,84 +261,8 @@ def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path):
         print(f"[telegram-alert] silent fail: {e}", file=sys.stderr)
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("name", help="workflow name (workflows/<name>.json)")
-    args = ap.parse_args(argv)
-    root = _resolve_root()
-    _load_dotenv(root)
-
-    try:
-        cfg = load_workflow(args.name, root)
-    except WorkflowError as e:
-        print(f"[workflow] {e}", file=sys.stderr); return 2
-
-    date = _today_iso()
-    output_rel = resolve_output(cfg, date)
-    output_abs = (root / output_rel).resolve()
-    output_abs.parent.mkdir(parents=True, exist_ok=True)
-    logs_dir = output_abs.parent / "_logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    log_path = logs_dir / f"{date}-{int(time.time())}.log"
-
-    # Render mcp.json with just this workflow's tools
-    mcp_dir = str(root / "mcp")
-    tmpl = root / "mcp" / "mcp.json.tmpl"
-    out_mcp = root / "mcp" / "mcp.json"
-    try:
-        mcp_json_path = render_mcp(tools=cfg.tools, mcp_dir=mcp_dir,
-                                   python_bin=_python_bin(root),
-                                   tmpl_path=tmpl, out_path=out_mcp,
-                                   env_subs=_load_env_subs(root),
-                                   root_dir=str(root.parent))
-    except (FileNotFoundError, McpRenderError) as e:
-        print(f"[mcp_render] {e}", file=sys.stderr); return 3
-
-    allowed = derive_allowed_tools(cfg.tools, TOOL_MAP)
-
-    # Build the prompt
-    prompt = build_prompt(
-        prompt_paths=[root / p for p in cfg.prompts],
-        substitutions={
-            "DATE": date,
-            "OUTPUT_PATH": str(output_abs),
-            "WORKFLOW_NAME": cfg.name,
-            "SOURCES_JSON": json.dumps([s.__dict__ for s in cfg.sources],
-                                       ensure_ascii=False),
-        },
-    )
-
-    # Invoke claude -p
-    bin_ = _claude_bin()
-    argv_ = [bin_, "-p", prompt,
-            "--model", cfg.model,
-            "--max-turns", str(cfg.max_turns),
-            "--mcp-config", str(mcp_json_path),
-            "--strict-mcp-config",
-            # Skip the project-level .claude/settings.json (which registers
-            # session-start / auto-recall / search-enforcer / Stop=auto-capture
-            # hooks intended for the interactive Claude Code session). The Stop
-            # hook in particular spawned an Opus agent at the end of every
-            # workflow run — a real per-day cost for zero workflow value.
-            # We previously tried --bare but it disables credentials loading
-            # ("Not logged in"). --setting-sources user keeps auth + user-level
-            # config while dropping the project hooks. KG access is via the
-            # MCP server above, called explicitly from the workflow prompt.
-            "--setting-sources", "user",
-            "--allowedTools", ",".join(allowed)]
-    print(f"[run] {cfg.name} → {output_abs}", file=sys.stderr)
-    with log_path.open("w", encoding="utf-8") as logf:
-        logf.write(f"=== argv ===\n{argv_[:1] + ['-p', '<...prompt elided...>'] + argv_[3:]}\n\n")
-    rc = _run_claude_with_retry(argv_, log_path, root)
-    if rc != 0:
-        print(f"[claude] exited {rc} — see {log_path}", file=sys.stderr)
-        _telegram_alert_failure(cfg.name, date, cfg.post.telegram, rc, log_path)
-        return rc
-    if not output_abs.exists():
-        print(f"[claude] exit 0 but no HTML at {output_abs} — see {log_path}", file=sys.stderr)
-        _telegram_alert_failure(cfg.name, date, cfg.post.telegram, 4, log_path)
-        return 4
-
+def _post_process(cfg, root, bin_, output_abs, output_rel, date):
+    """PDF + history + Telegram for a finished HTML. All best-effort."""
     # Optional PDF (best-effort)
     if cfg.post.pdf:
         chrome_candidates = [
@@ -380,6 +331,109 @@ def main(argv=None):
         except Exception as e:
             print(f"[telegram] skipped: {e}", file=sys.stderr)
 
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("name", help="workflow name (workflows/<name>.json)")
+    ap.add_argument("--post-only", action="store_true",
+                    help="skip claude; redo PDF/history/Telegram for the existing "
+                         "HTML of today (or FINANCE_WORKFLOWS_DATE)")
+    args = ap.parse_args(argv)
+    root = _resolve_root()
+    _load_dotenv(root)
+
+    try:
+        cfg = load_workflow(args.name, root)
+    except WorkflowError as e:
+        print(f"[workflow] {e}", file=sys.stderr); return 2
+
+    date = _today_iso()
+    output_rel = resolve_output(cfg, date)
+    output_abs = (root / output_rel).resolve()
+    output_abs.parent.mkdir(parents=True, exist_ok=True)
+    logs_dir = output_abs.parent / "_logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = logs_dir / f"{date}-{int(time.time())}.log"
+    bin_ = _claude_bin()
+
+    if args.post_only:
+        if not output_abs.exists():
+            print(f"[post-only] no HTML at {output_abs}", file=sys.stderr)
+            return 4
+        _post_process(cfg, root, bin_, output_abs, output_rel, date)
+        print(f"[run] post-only ok → {output_abs}", file=sys.stderr)
+        return 0
+
+    # Render mcp.json with just this workflow's tools
+    mcp_dir = str(root / "mcp")
+    tmpl = root / "mcp" / "mcp.json.tmpl"
+    out_mcp = root / "mcp" / "mcp.json"
+    try:
+        mcp_json_path = render_mcp(tools=cfg.tools, mcp_dir=mcp_dir,
+                                   python_bin=_python_bin(root),
+                                   tmpl_path=tmpl, out_path=out_mcp,
+                                   env_subs=_load_env_subs(root),
+                                   root_dir=str(root.parent))
+    except (FileNotFoundError, McpRenderError) as e:
+        print(f"[mcp_render] {e}", file=sys.stderr); return 3
+
+    allowed = derive_allowed_tools(cfg.tools, TOOL_MAP)
+
+    # Build the prompt
+    prompt = build_prompt(
+        prompt_paths=[root / p for p in cfg.prompts],
+        substitutions={
+            "DATE": date,
+            "OUTPUT_PATH": str(output_abs),
+            "WORKFLOW_NAME": cfg.name,
+            "SOURCES_JSON": json.dumps([s.__dict__ for s in cfg.sources],
+                                       ensure_ascii=False),
+        },
+    )
+
+    # Invoke claude -p
+    argv_ = [bin_, "-p", prompt,
+            "--model", cfg.model,
+            "--max-turns", str(cfg.max_turns),
+            "--mcp-config", str(mcp_json_path),
+            "--strict-mcp-config",
+            # Skip the project-level .claude/settings.json (which registers
+            # session-start / auto-recall / search-enforcer / Stop=auto-capture
+            # hooks intended for the interactive Claude Code session). The Stop
+            # hook in particular spawned an Opus agent at the end of every
+            # workflow run — a real per-day cost for zero workflow value.
+            # We previously tried --bare but it disables credentials loading
+            # ("Not logged in"). --setting-sources user keeps auth + user-level
+            # config while dropping the project hooks. KG access is via the
+            # MCP server above, called explicitly from the workflow prompt.
+            "--setting-sources", "user",
+            "--allowedTools", ",".join(allowed)]
+    print(f"[run] {cfg.name} → {output_abs}", file=sys.stderr)
+    with log_path.open("w", encoding="utf-8") as logf:
+        logf.write(f"=== argv ===\n{argv_[:1] + ['-p', '<...prompt elided...>'] + argv_[3:]}\n\n")
+    run_started = time.time()
+    rc = _run_claude_with_retry(argv_, log_path, root)
+    if rc != 0:
+        tail = log_path.read_text("utf-8", errors="replace")[-4000:]
+        reset = _usage_limit_reset(tail)
+        salvaged = _fresh_complete_html(output_abs, run_started)
+        notes = []
+        if reset is not None:
+            notes.append("Claude 訂閱額度用完" + (f",{reset} 重置" if reset else ""))
+        notes.append("報告已完整寫出 → 照常產 PDF / 推送" if salvaged
+                     else "沒有完整報告 → 需要補跑")
+        print(f"[claude] exited {rc} — see {log_path} ({'; '.join(notes)})",
+              file=sys.stderr)
+        _telegram_alert_failure(cfg.name, date, cfg.post.telegram, rc, log_path,
+                                note=";".join(notes))
+        if not salvaged:
+            return rc
+    elif not output_abs.exists():
+        print(f"[claude] exit 0 but no HTML at {output_abs} — see {log_path}", file=sys.stderr)
+        _telegram_alert_failure(cfg.name, date, cfg.post.telegram, 4, log_path)
+        return 4
+
+    _post_process(cfg, root, bin_, output_abs, output_rel, date)
     print(f"[run] ok → {output_abs}", file=sys.stderr)
     return 0
 

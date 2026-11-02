@@ -133,3 +133,15 @@ def test_swallows_httpx_exceptions(monkeypatch, tmp_path):
     html = tmp_path / "r.html"; html.write_text("<p>x</p>", "utf-8")
     # Must not raise
     m.notify("crypto-daily", "2026-05-24", html, None, None)
+
+
+def test_never_sends_another_days_summary(tmp_path):
+    """2026-11-02: today's history step failed (usage limit). The old fallback
+    returned the latest entry → yesterday's stance under today's header."""
+    m = _load()
+    hist = tmp_path / "_history.jsonl"
+    hist.write_text(json.dumps({"date": "2026-11-01", "overall_stance": "昨天的觀點"},
+                               ensure_ascii=False) + "\n", "utf-8")
+    assert m._latest_history(hist, "2026-11-02") is None
+    msg = m._build_message("crypto-daily", "2026-11-02", m._latest_history(hist, "2026-11-02"))
+    assert "昨天的觀點" not in msg and "無摘要資料" in msg
