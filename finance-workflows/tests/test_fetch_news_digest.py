@@ -105,3 +105,13 @@ def test_window_history_without_date_falls_back(tmp_path):
     now = _tpe(2026, 8, 24, 7)
     ws, we = nd.compute_window(tmp_path, now=now)
     assert ws == now - dt.timedelta(hours=nd.DEFAULT_WINDOW_HOURS)
+
+
+def test_window_anchors_on_newest_date_not_last_line(tmp_path):
+    """A --post-only backfill can append an OLDER date last; the news window
+    must still start from the newest briefing."""
+    h = tmp_path / "reports" / "morning-briefing"; h.mkdir(parents=True)
+    (h / "_history.jsonl").write_text(
+        '{"date": "2026-11-02"}\n{"date": "2026-10-30"}\n', "utf-8")
+    ts = nd._read_last_briefing_ts(tmp_path)
+    assert ts.date().isoformat() == "2026-11-02"

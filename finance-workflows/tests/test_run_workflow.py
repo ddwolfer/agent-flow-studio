@@ -232,7 +232,7 @@ def test_report_written_before_usage_limit_is_salvaged(tmp_path):
     r = _run(env)
     assert r.returncode == 0, r.stderr                     # post-processing ran
     assert "full report" in html.read_text("utf-8")
-    assert "訂閱額度用完" in r.stderr and "照常產 PDF" in r.stderr
+    assert "訂閱額度用完" in r.stderr and "報告已完整寫出" in r.stderr
     assert "[run] ok" in r.stderr
 
 

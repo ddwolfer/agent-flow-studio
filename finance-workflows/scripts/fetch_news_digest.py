@@ -119,7 +119,7 @@ def _summary_from_entry(entry) -> str:
 def _read_last_briefing_ts(root: pathlib.Path) -> dt.datetime | None:
     """Parse the most recent morning-briefing history entry's date, if any.
 
-    History is jsonl; the last non-blank line is the newest. We use the file's
+    History is jsonl; the entry with the newest date wins. We use the file's
     mtime as a fallback because the date field is a bare 'YYYY-MM-DD' — we
     interpret it as "briefing generated during that TPE morning ~06:00" and
     take 08:00 TPE that day as the window anchor.
@@ -128,17 +128,22 @@ def _read_last_briefing_ts(root: pathlib.Path) -> dt.datetime | None:
     if not hist.exists():
         return None
     try:
-        last = None
+        # Newest DATE, not the last line: an out-of-order append (e.g. a
+        # --post-only backfill of an older day) must not drag the window back.
+        dates = []
         for line in hist.read_text().splitlines():
             line = line.strip()
-            if line:
-                last = line
-        if not last:
+            if not line:
+                continue
+            try:
+                d = json.loads(line).get("date")
+            except ValueError:
+                continue
+            if d:
+                dates.append(d)
+        if not dates:
             return None
-        obj = json.loads(last)
-        d = obj.get("date")
-        if not d:
-            return None
+        d = max(dates)
         return dt.datetime.fromisoformat(d + "T08:00:00").replace(tzinfo=TPE)
     except Exception:
         return None

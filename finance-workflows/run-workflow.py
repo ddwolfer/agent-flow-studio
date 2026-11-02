@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """finance-workflows orchestrator. Usage: python3 run-workflow.py <name>"""
 import argparse, datetime as _dt, json, os, pathlib, re, signal, subprocess, sys, time
-import urllib.request, urllib.parse
+import urllib.error, urllib.request, urllib.parse
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -226,7 +226,8 @@ def _run_claude_with_retry(argv_, log_path, root, *, attempts=3, backoff=30,
     return rc
 
 
-def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path, note=""):
+def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path, note="",
+                            title=None):
     """Best-effort: post a failure alert to the same Telegram topic that would
     have received the success message. Silent on any error — alerting must
     never make the runner crash worse than it already has. `note` is an extra
@@ -245,20 +246,40 @@ def _telegram_alert_failure(workflow_name, date, topic_env, rc, log_path, note="
             tail = "\n".join(tail)[-1500:]
         except Exception:
             pass
-        text = (f"⚠️ *{workflow_name}* `{date}` 跑失敗 (rc={rc})\n"
+        text = (f"⚠️ *{workflow_name}* `{date}` {title or f'跑失敗 (rc={rc})'}\n"
                 + (f"{note}\n" if note else "") +
                 f"Log: `{log_path.name}`\n"
                 f"```\n{tail}\n```")
-        data = urllib.parse.urlencode({
-            "chat_id": chat, "message_thread_id": topic,
-            "text": text, "parse_mode": "Markdown",
-            "disable_web_page_preview": "true",
-        }).encode()
-        urllib.request.urlopen(
-            f"https://api.telegram.org/bot{bot}/sendMessage",
-            data=data, timeout=15)
+        msg = {"chat_id": chat, "message_thread_id": topic, "text": text,
+               "disable_web_page_preview": "true"}
+        url = f"https://api.telegram.org/bot{bot}/sendMessage"
+        try:
+            urllib.request.urlopen(url, data=urllib.parse.urlencode(
+                {**msg, "parse_mode": "Markdown"}).encode(), timeout=15)
+        except urllib.error.HTTPError as e:
+            if e.code != 400:
+                raise
+            # Markdown rejected (e.g. an "_" in a CLI-provided time zone like
+            # Asia/Hong_Kong) — an alert in plain text beats no alert.
+            urllib.request.urlopen(url, data=urllib.parse.urlencode(msg).encode(),
+                                   timeout=15)
     except Exception as e:
         print(f"[telegram-alert] silent fail: {e}", file=sys.stderr)
+
+
+def _history_has(hist_path, date):
+    """True if _history.jsonl already has an entry for `date` (one per day:
+    a --post-only rerun must not append duplicates or reorder dates)."""
+    try:
+        for line in hist_path.read_text("utf-8").splitlines():
+            try:
+                if json.loads(line).get("date") == date:
+                    return True
+            except ValueError:
+                continue
+    except OSError:
+        pass
+    return False
 
 
 def _post_process(cfg, root, bin_, output_abs, output_rel, date):
@@ -291,7 +312,10 @@ def _post_process(cfg, root, bin_, output_abs, output_rel, date):
                                stderr=subprocess.DEVNULL)
 
     # Optional history (best-effort)
-    if cfg.history is not None:
+    hist_path = output_abs.parent / "_history.jsonl"
+    if cfg.history is not None and _history_has(hist_path, date):
+        print(f"[history] {date} already recorded — skip", file=sys.stderr)
+    elif cfg.history is not None:
         try:
             hint = ("Read the following HTML and produce a single JSON object "
                     f"with exactly these keys: {cfg.history.fields}. Prefer a bare "
@@ -419,13 +443,17 @@ def main(argv=None):
         salvaged = _fresh_complete_html(output_abs, run_started)
         notes = []
         if reset is not None:
-            notes.append("Claude 訂閱額度用完" + (f",{reset} 重置" if reset else ""))
-        notes.append("報告已完整寫出 → 照常產 PDF / 推送" if salvaged
-                     else "沒有完整報告 → 需要補跑")
+            notes.append("Claude 訂閱額度用完" + (f"，{reset} 重置" if reset else ""))
+        if salvaged:
+            notes.append("報告已完整寫出，下面照常推送；摘要若缺，等額度恢復後跑 "
+                         f"`run-workflow.py {cfg.name} --post-only` 補上")
+        else:
+            notes.append("沒有完整報告，需要補跑")
         print(f"[claude] exited {rc} — see {log_path} ({'; '.join(notes)})",
               file=sys.stderr)
-        _telegram_alert_failure(cfg.name, date, cfg.post.telegram, rc, log_path,
-                                note=";".join(notes))
+        _telegram_alert_failure(
+            cfg.name, date, cfg.post.telegram, rc, log_path, note="\n".join(notes),
+            title=f"未正常結束 (rc={rc})，報告已救回" if salvaged else None)
         if not salvaged:
             return rc
     elif not output_abs.exists():

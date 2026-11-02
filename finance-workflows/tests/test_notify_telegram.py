@@ -145,3 +145,16 @@ def test_never_sends_another_days_summary(tmp_path):
     assert m._latest_history(hist, "2026-11-02") is None
     msg = m._build_message("crypto-daily", "2026-11-02", m._latest_history(hist, "2026-11-02"))
     assert "昨天的觀點" not in msg and "無摘要資料" in msg
+
+
+def test_history_values_are_markdown_escaped():
+    """10-31 / 11-01: an unpaired '_' in BTCUSD_PERP made Telegram reject the
+    whole summary (HTTP 400) — only the PDF arrived."""
+    m = _load()
+    msg = m._build_message("crypto-daily", "2026-11-02", {
+        "overall_stance": "偏多 *強*", "confidence": 6,
+        "top_signals": ["BTCUSD_PERP 費率 [轉正]", {"signal": "`x`"}]})
+    for raw, esc in [("BTCUSD_PERP", "BTCUSD\\_PERP"), ("*強*", "\\*強\\*"),
+                     ("[轉正]", "\\[轉正]"), ("`x`", "\\`x\\`")]:
+        assert esc in msg
+    assert "*基調*" in msg                    # our own formatting is untouched
