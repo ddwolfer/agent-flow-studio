@@ -40,7 +40,8 @@ import csv
 import httpx
 
 _FAPI = "https://fapi.binance.com"
-_CBOE = ("https://cdn.cboe.com/api/global/us_indices/daily_prices/"
+# Host moved cdn.cboe.com → cdn-api.cboe.com (~2026-10-23; old URL answers 307).
+_CBOE = ("https://cdn-api.cboe.com/api/global/us_indices/daily_prices/"
          "{code}_History.csv")
 _TREAS = ("https://api.fiscaldata.treasury.gov/services/api/fiscal_service/"
           "v1/accounting/od/upcoming_auctions")
@@ -99,7 +100,9 @@ def fetch_cboe_vix(code: str, timeout: float = _DEFAULT_TIMEOUT) -> dict:
     """Latest close + DoD change from the CBOE daily CSV. `code` ∈
     {VIX, VIX9D, VIX3M}. ~200 KB CSV download — fine on a daily cron."""
     try:
-        with httpx.Client(timeout=timeout) as c:
+        # follow_redirects: httpx doesn't by default, and a CDN host move is
+        # announced exactly this way — don't lose VIX for weeks again.
+        with httpx.Client(timeout=timeout, follow_redirects=True) as c:
             r = c.get(_CBOE.format(code=code))
         if r.status_code != 200:
             return {"error": f"HTTP {r.status_code}"}

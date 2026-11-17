@@ -77,6 +77,45 @@ def test_fetch_cboe_vix_handles_malformed_csv(monkeypatch):
     assert "error" in out
 
 
+def test_fetch_cboe_vix_follows_host_move_redirect(monkeypatch):
+    """Regression 2026-10-23 → 11-17: CBOE moved cdn.cboe.com → cdn-api.cboe.com
+    and answered the old URL with HTTP 307. httpx does not follow redirects by
+    default, so VIX/VIX9D/VIX3M were "HTTP 307" for ~4 weeks. A real local
+    server (not a faked .get) so the actual httpx redirect handling is tested."""
+    import http.server, threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith("/old/"):
+                self.send_response(307)
+                self.send_header("Location", self.path.replace("/old/", "/new/"))
+                self.end_headers()
+                return
+            body = _CBOE_VIX_CSV.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setattr(fx, "_CBOE", f"http://127.0.0.1:{srv.server_port}"
+                                         "/old/{code}_History.csv")
+        out = fx.fetch_cboe_vix("VIX9D")
+    finally:
+        srv.shutdown()
+    assert out.get("latest_close") == 14.95, out
+
+
+def test_cboe_url_points_at_current_host():
+    assert fx._CBOE.startswith("https://cdn-api.cboe.com/")
+
+
 # ── Treasury fiscaldata upcoming auctions ─────────────────────────────────────
 def test_fetch_treasury_auctions_returns_top_n(monkeypatch):
     body = {"data": [
